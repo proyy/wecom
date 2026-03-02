@@ -11,7 +11,7 @@ import type { WecomBotInboundMessage as WecomInboundMessage, WecomInboundQuote }
 import { decryptWecomEncrypted, encryptWecomPlaintext, verifyWecomSignature, computeWecomMsgSignature } from "./crypto.js";
 import { extractEncryptFromXml } from "./crypto/xml.js";
 import { getWecomRuntime } from "./runtime.js";
-import { decryptWecomMediaWithHttp } from "./media.js";
+import { decryptWecomMediaWithMeta } from "./media.js";
 import { WEBHOOK_PATHS, LIMITS as WECOM_LIMITS } from "./types/constants.js";
 import { handleAgentWebhook } from "./agent/index.js";
 import { resolveWecomAccount, resolveWecomEgressProxyUrl, resolveWecomMediaMaxBytes, shouldRejectWecomDefaultRoute } from "./config/index.js";
@@ -552,23 +552,287 @@ function extractLocalFilePathsFromText(text: string): string[] {
   return Array.from(found);
 }
 
+const MIME_BY_EXT: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  pdf: "application/pdf",
+  txt: "text/plain",
+  csv: "text/csv",
+  tsv: "text/tab-separated-values",
+  md: "text/markdown",
+  json: "application/json",
+  xml: "application/xml",
+  yaml: "application/yaml",
+  yml: "application/yaml",
+  zip: "application/zip",
+  rar: "application/vnd.rar",
+  "7z": "application/x-7z-compressed",
+  tar: "application/x-tar",
+  gz: "application/gzip",
+  tgz: "application/gzip",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  rtf: "application/rtf",
+  odt: "application/vnd.oasis.opendocument.text",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  amr: "voice/amr",
+  m4a: "audio/mp4",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+};
+
+const EXT_BY_MIME: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(MIME_BY_EXT).map(([ext, mime]) => [mime, ext])),
+  "application/octet-stream": "bin",
+};
+
+const GENERIC_CONTENT_TYPES = new Set([
+  "application/octet-stream",
+  "binary/octet-stream",
+  "application/download",
+]);
+
+function normalizeContentType(raw?: string | null): string | undefined {
+  const normalized = String(raw ?? "").trim().split(";")[0]?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
+function isGenericContentType(raw?: string | null): boolean {
+  const normalized = normalizeContentType(raw);
+  if (!normalized) return true;
+  return GENERIC_CONTENT_TYPES.has(normalized);
+}
+
 function guessContentTypeFromPath(filePath: string): string | undefined {
   const ext = filePath.split(".").pop()?.toLowerCase();
   if (!ext) return undefined;
-  const map: Record<string, string> = {
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    webp: "image/webp",
-    bmp: "image/bmp",
-    pdf: "application/pdf",
-    txt: "text/plain",
-    md: "text/markdown",
-    json: "application/json",
-    zip: "application/zip",
-  };
-  return map[ext];
+  return MIME_BY_EXT[ext];
+}
+
+function guessExtensionFromContentType(contentType?: string): string | undefined {
+  const normalized = normalizeContentType(contentType);
+  if (!normalized) return undefined;
+  if (normalized === "image/jpeg") return "jpg";
+  return EXT_BY_MIME[normalized];
+}
+
+function extractFileNameFromUrl(rawUrl?: string): string | undefined {
+  const s = String(rawUrl ?? "").trim();
+  if (!s) return undefined;
+  try {
+    const u = new URL(s);
+    const name = decodeURIComponent(u.pathname.split("/").pop() ?? "").trim();
+    return name || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sanitizeInboundFilename(raw?: string): string | undefined {
+  const s = String(raw ?? "").trim();
+  if (!s) return undefined;
+  const base = s.split(/[\\/]/).pop()?.trim() ?? "";
+  if (!base) return undefined;
+  const sanitized = base.replace(/[\u0000-\u001f<>:"|?*]/g, "_").trim();
+  return sanitized || undefined;
+}
+
+function hasLikelyExtension(name?: string): boolean {
+  if (!name) return false;
+  return /\.[a-z0-9]{1,16}$/i.test(name);
+}
+
+function detectMimeFromBuffer(buffer: Buffer): string | undefined {
+  if (!buffer || buffer.length < 4) return undefined;
+
+  // PNG
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+
+  // JPEG
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+
+  // GIF
+  if (buffer.subarray(0, 6).toString("ascii") === "GIF87a" || buffer.subarray(0, 6).toString("ascii") === "GIF89a") {
+    return "image/gif";
+  }
+
+  // WEBP
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") {
+    return "image/webp";
+  }
+
+  // BMP
+  if (buffer[0] === 0x42 && buffer[1] === 0x4d) {
+    return "image/bmp";
+  }
+
+  // PDF
+  if (buffer.subarray(0, 5).toString("ascii") === "%PDF-") {
+    return "application/pdf";
+  }
+
+  // OGG
+  if (buffer.subarray(0, 4).toString("ascii") === "OggS") {
+    return "audio/ogg";
+  }
+
+  // WAV
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WAVE") {
+    return "audio/wav";
+  }
+
+  // MP3
+  if (buffer.subarray(0, 3).toString("ascii") === "ID3" || (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0)) {
+    return "audio/mpeg";
+  }
+
+  // MP4/MOV family
+  if (buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp") {
+    return "video/mp4";
+  }
+
+  // Legacy Office (OLE Compound File)
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0xd0 &&
+    buffer[1] === 0xcf &&
+    buffer[2] === 0x11 &&
+    buffer[3] === 0xe0 &&
+    buffer[4] === 0xa1 &&
+    buffer[5] === 0xb1 &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0xe1
+  ) {
+    return "application/msword";
+  }
+
+  // ZIP / OOXML
+  const zipMagic =
+    (buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04) ||
+    (buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x05 && buffer[3] === 0x06) ||
+    (buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x07 && buffer[3] === 0x08);
+  if (zipMagic) {
+    const probe = buffer.subarray(0, Math.min(buffer.length, 512 * 1024));
+    if (probe.includes(Buffer.from("word/"))) {
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    }
+    if (probe.includes(Buffer.from("xl/"))) {
+      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    }
+    if (probe.includes(Buffer.from("ppt/"))) {
+      return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    }
+    return "application/zip";
+  }
+
+  // Plain text heuristic
+  const sample = buffer.subarray(0, Math.min(buffer.length, 4096));
+  let printable = 0;
+  for (const b of sample) {
+    if (b === 0x00) return undefined;
+    if (b === 0x09 || b === 0x0a || b === 0x0d || (b >= 0x20 && b <= 0x7e)) {
+      printable += 1;
+    }
+  }
+  if (sample.length > 0 && printable / sample.length > 0.95) {
+    return "text/plain";
+  }
+
+  return undefined;
+}
+
+function resolveInlineFileName(input: unknown): string | undefined {
+  const raw = String(input ?? "").trim();
+  return sanitizeInboundFilename(raw);
+}
+
+function pickBotFileName(msg: WecomInboundMessage, item?: Record<string, any>): string | undefined {
+  const fromItem = item
+    ? resolveInlineFileName(
+      item?.filename ??
+      item?.file_name ??
+      item?.fileName ??
+      item?.name ??
+      item?.title,
+    )
+    : undefined;
+  if (fromItem) return fromItem;
+
+  const fromFile = resolveInlineFileName(
+    (msg as any)?.file?.filename ??
+    (msg as any)?.file?.file_name ??
+    (msg as any)?.file?.fileName ??
+    (msg as any)?.file?.name ??
+    (msg as any)?.file?.title ??
+    (msg as any)?.filename ??
+    (msg as any)?.fileName ??
+    (msg as any)?.FileName,
+  );
+  return fromFile;
+}
+
+function inferInboundMediaMeta(params: {
+  kind: "image" | "file";
+  buffer: Buffer;
+  sourceUrl?: string;
+  sourceContentType?: string;
+  sourceFilename?: string;
+  explicitFilename?: string;
+}): { contentType: string; filename: string } {
+  const headerType = normalizeContentType(params.sourceContentType);
+  const magicType = detectMimeFromBuffer(params.buffer);
+  const rawUrlName = sanitizeInboundFilename(extractFileNameFromUrl(params.sourceUrl));
+  const guessedByUrl = hasLikelyExtension(rawUrlName) ? rawUrlName : undefined;
+  const explicitName = sanitizeInboundFilename(params.explicitFilename);
+  const sourceName = sanitizeInboundFilename(params.sourceFilename);
+  const chosenName = explicitName || sourceName || guessedByUrl;
+  const typeByName = chosenName ? guessContentTypeFromPath(chosenName) : undefined;
+
+  let contentType: string;
+  if (params.kind === "image") {
+    if (magicType?.startsWith("image/")) contentType = magicType;
+    else if (headerType?.startsWith("image/")) contentType = headerType;
+    else if (typeByName?.startsWith("image/")) contentType = typeByName;
+    else contentType = "image/jpeg";
+  } else {
+    contentType =
+      magicType ||
+      (!isGenericContentType(headerType) ? headerType! : undefined) ||
+      typeByName ||
+      "application/octet-stream";
+  }
+
+  const hasExt = Boolean(chosenName && /\.[a-z0-9]{1,16}$/i.test(chosenName));
+  const ext = guessExtensionFromContentType(contentType) || (params.kind === "image" ? "jpg" : "bin");
+  const filename = chosenName
+    ? (hasExt ? chosenName : `${chosenName}.${ext}`)
+    : `${params.kind}.${ext}`;
+
+  return { contentType, filename };
 }
 
 function looksLikeSendLocalFileIntent(rawBody: string): boolean {
@@ -691,13 +955,21 @@ async function processInboundMessage(target: WecomWebhookTarget, msg: WecomInbou
     const url = String((msg as any).image?.url ?? "").trim();
     if (url && aesKey) {
       try {
-        const buf = await decryptWecomMediaWithHttp(url, aesKey, { maxBytes, http: { proxyUrl } });
+        const decrypted = await decryptWecomMediaWithMeta(url, aesKey, { maxBytes, http: { proxyUrl } });
+        const inferred = inferInboundMediaMeta({
+          kind: "image",
+          buffer: decrypted.buffer,
+          sourceUrl: decrypted.sourceUrl || url,
+          sourceContentType: decrypted.sourceContentType,
+          sourceFilename: decrypted.sourceFilename,
+          explicitFilename: pickBotFileName(msg),
+        });
         return {
           body: "[image]",
           media: {
-            buffer: buf,
-            contentType: "image/jpeg", // WeCom images are usually generic; safest assumption or could act as generic
-            filename: "image.jpg",
+            buffer: decrypted.buffer,
+            contentType: inferred.contentType,
+            filename: inferred.filename,
           }
         };
       } catch (err) {
@@ -717,13 +989,21 @@ async function processInboundMessage(target: WecomWebhookTarget, msg: WecomInbou
     const url = String((msg as any).file?.url ?? "").trim();
     if (url && aesKey) {
       try {
-        const buf = await decryptWecomMediaWithHttp(url, aesKey, { maxBytes, http: { proxyUrl } });
+        const decrypted = await decryptWecomMediaWithMeta(url, aesKey, { maxBytes, http: { proxyUrl } });
+        const inferred = inferInboundMediaMeta({
+          kind: "file",
+          buffer: decrypted.buffer,
+          sourceUrl: decrypted.sourceUrl || url,
+          sourceContentType: decrypted.sourceContentType,
+          sourceFilename: decrypted.sourceFilename,
+          explicitFilename: pickBotFileName(msg),
+        });
         return {
           body: "[file]",
           media: {
-            buffer: buf,
-            contentType: "application/octet-stream",
-            filename: "file.bin", // WeCom doesn't guarantee filename in webhook payload always, defaulting
+            buffer: decrypted.buffer,
+            contentType: inferred.contentType,
+            filename: inferred.filename,
           }
         };
       } catch (err) {
@@ -755,11 +1035,19 @@ async function processInboundMessage(target: WecomWebhookTarget, msg: WecomInbou
           const url = String(item[t]?.url ?? "").trim();
           if (url) {
             try {
-              const buf = await decryptWecomMediaWithHttp(url, aesKey, { maxBytes, http: { proxyUrl } });
+              const decrypted = await decryptWecomMediaWithMeta(url, aesKey, { maxBytes, http: { proxyUrl } });
+              const inferred = inferInboundMediaMeta({
+                kind: t,
+                buffer: decrypted.buffer,
+                sourceUrl: decrypted.sourceUrl || url,
+                sourceContentType: decrypted.sourceContentType,
+                sourceFilename: decrypted.sourceFilename,
+                explicitFilename: pickBotFileName(msg, item?.[t]),
+              });
               foundMedia = {
-                buffer: buf,
-                contentType: t === "image" ? "image/jpeg" : "application/octet-stream",
-                filename: t === "image" ? "image.jpg" : "file.bin"
+                buffer: decrypted.buffer,
+                contentType: inferred.contentType,
+                filename: inferred.filename,
               };
               bodyParts.push(`[${t}]`);
             } catch (err) {
@@ -1026,18 +1314,22 @@ async function startAgentForStream(params: {
 
       if (agentCfg && userid && userid !== "unknown") {
         for (const p of imagePaths) {
+          const guessedType = guessContentTypeFromPath(p);
           try {
             await sendAgentDmMedia({
               agent: agentCfg,
               userId: userid,
               mediaUrlOrPath: p,
-              contentType: guessContentTypeFromPath(p),
+              contentType: guessedType,
               filename: p.split("/").pop() || "image",
             });
             streamStore.updateStream(streamId, (s) => {
               s.agentMediaKeys = Array.from(new Set([...(s.agentMediaKeys ?? []), p]));
             });
-            logVerbose(target, `local-path: 图片已通过 Agent 私信发送 user=${userid} path=${p}`);
+            logVerbose(
+              target,
+              `local-path: 图片已通过 Agent 私信发送 user=${userid} path=${p} contentType=${guessedType ?? "unknown"}`,
+            );
           } catch (err) {
             target.runtime.error?.(`local-path: 图片 Agent 私信兜底失败 path=${p}: ${String(err)}`);
           }
@@ -1088,18 +1380,22 @@ async function startAgentForStream(params: {
       for (const p of otherPaths) {
         const alreadySent = streamStore.getStream(streamId)?.agentMediaKeys?.includes(p);
         if (alreadySent) continue;
+        const guessedType = guessContentTypeFromPath(p);
         try {
           await sendAgentDmMedia({
             agent: agentCfg,
             userId: userid,
             mediaUrlOrPath: p,
-            contentType: guessContentTypeFromPath(p),
+            contentType: guessedType,
             filename: p.split("/").pop() || "file",
           });
           streamStore.updateStream(streamId, (s) => {
             s.agentMediaKeys = Array.from(new Set([...(s.agentMediaKeys ?? []), p]));
           });
-          logVerbose(target, `local-path: 文件已通过 Agent 私信发送 user=${userid} path=${p}`);
+          logVerbose(
+            target,
+            `local-path: 文件已通过 Agent 私信发送 user=${userid} path=${p} contentType=${guessedType ?? "unknown"}`,
+          );
         } catch (err) {
           target.runtime.error?.(`local-path: Agent 私信发送文件失败 path=${p}: ${String(err)}`);
         }
