@@ -1,334 +1,274 @@
-/**
- * WeCom 账号解析与模式检测
- */
-
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
+
 import type {
-    WecomConfig,
-    WecomAccountConfig,
-    WecomBotConfig,
-    WecomAgentConfig,
-    WecomNetworkConfig,
-    ResolvedWecomAccount,
-    ResolvedBotAccount,
-    ResolvedAgentAccount,
-    ResolvedMode,
-    ResolvedWecomAccounts,
+  ResolvedAgentAccount,
+  ResolvedBotAccount,
+  ResolvedMode,
+  ResolvedWecomAccount,
+  ResolvedWecomAccounts,
+  WecomAccountConfig,
+  WecomAgentConfig,
+  WecomBotConfig,
+  WecomConfig,
+  WecomNetworkConfig,
 } from "../types/index.js";
 
 export const DEFAULT_ACCOUNT_ID = "default";
 
 export type WecomAccountConflict = {
-    type: "duplicate_bot_token" | "duplicate_bot_aibotid" | "duplicate_agent_id";
-    accountId: string;
-    ownerAccountId: string;
-    message: string;
+  type: "duplicate_bot_id" | "duplicate_agent_id";
+  accountId: string;
+  ownerAccountId: string;
+  message: string;
 };
 
-/**
- * 检测配置中启用的模式
- */
-export function detectMode(config: WecomConfig | undefined): ResolvedMode {
-    if (!config || config.enabled === false) return "disabled";
-
-    const accounts = config.accounts;
-    if (accounts && typeof accounts === "object") {
-        const enabledEntries = Object.values(accounts).filter(
-            (entry) => entry && entry.enabled !== false,
-        );
-        if (enabledEntries.length > 0) return "matrix";
-    }
-
-    return "legacy";
+function toNumber(value: number | string | undefined): number | undefined {
+  if (value == null) return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/**
- * 解析 Bot 模式账号
- */
-function resolveBotAccount(accountId: string, config: WecomBotConfig, network?: WecomNetworkConfig): ResolvedBotAccount {
-    return {
-        accountId,
-        enabled: true,
-        configured: Boolean(config.token && config.encodingAESKey),
-        token: config.token,
-        encodingAESKey: config.encodingAESKey,
-        receiveId: config.receiveId?.trim() ?? "",
-        config,
-        network,
-    };
+function resolveBotAccount(
+  accountId: string,
+  config: WecomBotConfig,
+  network?: WecomNetworkConfig,
+): ResolvedBotAccount {
+  const primaryTransport = config.primaryTransport ?? (config.ws ? "ws" : "webhook");
+  const wsConfigured = Boolean(config.ws?.botId && config.ws?.secret);
+  const webhookConfigured = Boolean(config.webhook?.token && config.webhook?.encodingAESKey);
+  const configured = primaryTransport === "ws" ? wsConfigured : webhookConfigured;
+  return {
+    accountId,
+    configured,
+    primaryTransport,
+    wsConfigured,
+    webhookConfigured,
+    config,
+    network,
+    ws: config.ws
+      ? {
+          botId: config.ws.botId,
+          secret: config.ws.secret,
+        }
+      : undefined,
+    webhook: config.webhook
+      ? {
+          token: config.webhook.token,
+          encodingAESKey: config.webhook.encodingAESKey,
+          receiveId: config.webhook.receiveId?.trim() ?? "",
+        }
+      : undefined,
+    token: config.webhook?.token ?? "",
+    encodingAESKey: config.webhook?.encodingAESKey ?? "",
+    receiveId: config.webhook?.receiveId?.trim() ?? "",
+    botId: config.ws?.botId ?? "",
+    secret: config.ws?.secret ?? "",
+  };
 }
 
-/**
- * 解析 Agent 模式账号
- */
-function resolveAgentAccount(accountId: string, config: WecomAgentConfig, network?: WecomNetworkConfig): ResolvedAgentAccount {
-    const agentIdRaw = config.agentId;
-    const agentId = agentIdRaw == null
-        ? undefined
-        : (typeof agentIdRaw === "number" ? agentIdRaw : Number(agentIdRaw));
-    const normalizedAgentId = Number.isFinite(agentId) ? agentId : undefined;
-
-    return {
-        accountId,
-        enabled: true,
-        configured: Boolean(
-            config.corpId && config.corpSecret &&
-            config.token && config.encodingAESKey
-        ),
-        corpId: config.corpId,
-        corpSecret: config.corpSecret,
-        agentId: normalizedAgentId,
-        token: config.token,
-        encodingAESKey: config.encodingAESKey,
-        config,
-        network,
-    };
+function resolveAgentAccount(
+  accountId: string,
+  config: WecomAgentConfig,
+  network?: WecomNetworkConfig,
+): ResolvedAgentAccount {
+  const agentId = toNumber(config.agentId);
+  const callbackConfigured = Boolean(config.token && config.encodingAESKey);
+  const apiConfigured = Boolean(config.corpId && config.corpSecret && agentId);
+  return {
+    accountId,
+    configured: callbackConfigured || apiConfigured,
+    callbackConfigured,
+    apiConfigured,
+    corpId: config.corpId,
+    corpSecret: config.corpSecret,
+    agentId,
+    token: config.token,
+    encodingAESKey: config.encodingAESKey,
+    config,
+    network,
+  };
 }
 
 function toResolvedAccount(params: {
-    accountId: string;
-    enabled: boolean;
-    name?: string;
-    config: WecomAccountConfig;
-    network?: WecomNetworkConfig;
+  accountId: string;
+  enabled: boolean;
+  name?: string;
+  config: WecomAccountConfig;
+  network?: WecomNetworkConfig;
 }): ResolvedWecomAccount {
-    const bot = params.config.bot
-        ? resolveBotAccount(params.accountId, params.config.bot, params.network)
-        : undefined;
-    const agent = params.config.agent
-        ? resolveAgentAccount(params.accountId, params.config.agent, params.network)
-        : undefined;
-    const configured = Boolean(bot?.configured || agent?.configured);
-    return {
-        accountId: params.accountId,
-        name: params.name,
-        enabled: params.enabled,
-        configured,
-        config: params.config,
-        bot,
-        agent,
-    };
+  const bot = params.config.bot
+    ? resolveBotAccount(params.accountId, params.config.bot, params.network)
+    : undefined;
+  const agent = params.config.agent
+    ? resolveAgentAccount(params.accountId, params.config.agent, params.network)
+    : undefined;
+  return {
+    accountId: params.accountId,
+    name: params.name,
+    enabled: params.enabled,
+    configured: Boolean(bot?.configured || agent?.configured),
+    config: params.config,
+    bot,
+    agent,
+  };
+}
+
+export function detectMode(config: WecomConfig | undefined): ResolvedMode {
+  if (!config || config.enabled === false) return "disabled";
+  if (config.accounts && Object.keys(config.accounts).length > 0) {
+    return "matrix";
+  }
+  if (config.bot || config.agent) {
+    return "legacy";
+  }
+  return "disabled";
 }
 
 function resolveMatrixAccounts(wecom: WecomConfig): Record<string, ResolvedWecomAccount> {
-    const accounts = wecom.accounts;
-    if (!accounts || typeof accounts !== "object") return {};
-
-    const resolved: Record<string, ResolvedWecomAccount> = {};
-    for (const [rawId, entry] of Object.entries(accounts)) {
-        const accountId = rawId.trim();
-        if (!accountId || !entry) continue;
-        const enabled = wecom.enabled !== false && entry.enabled !== false;
-        const config: WecomAccountConfig = {
-            enabled: entry.enabled,
-            name: entry.name,
-            bot: entry.bot,
-            agent: entry.agent,
-        };
-        resolved[accountId] = toResolvedAccount({
-            accountId,
-            enabled,
-            name: entry.name,
-            config,
-            network: wecom.network,
-        });
-    }
-    return resolved;
+  const resolved: Record<string, ResolvedWecomAccount> = {};
+  for (const [rawId, entry] of Object.entries(wecom.accounts ?? {})) {
+    const accountId = rawId.trim();
+    if (!accountId || !entry) continue;
+    resolved[accountId] = toResolvedAccount({
+      accountId,
+      enabled: wecom.enabled !== false && entry.enabled !== false,
+      name: entry.name,
+      config: entry,
+      network: wecom.network,
+    });
+  }
+  return resolved;
 }
 
 function resolveLegacyAccounts(wecom: WecomConfig): Record<string, ResolvedWecomAccount> {
-    const config: WecomAccountConfig = {
-        bot: wecom.bot,
-        agent: wecom.agent,
-    };
-    const account = toResolvedAccount({
-        accountId: DEFAULT_ACCOUNT_ID,
-        enabled: wecom.enabled !== false,
-        config,
-        network: wecom.network,
-    });
-    return { [DEFAULT_ACCOUNT_ID]: account };
+  const config: WecomAccountConfig = {
+    bot: wecom.bot,
+    agent: wecom.agent,
+  };
+  return {
+    [DEFAULT_ACCOUNT_ID]: toResolvedAccount({
+      accountId: DEFAULT_ACCOUNT_ID,
+      enabled: wecom.enabled !== false,
+      config,
+      network: wecom.network,
+    }),
+  };
 }
 
-function normalizeDuplicateKey(value: string): string {
-    return value.trim().toLowerCase();
-}
-
-function formatBotTokenConflict(params: { accountId: string; ownerAccountId: string }): WecomAccountConflict {
-    return {
-        type: "duplicate_bot_token",
-        accountId: params.accountId,
-        ownerAccountId: params.ownerAccountId,
-        message:
-            `Duplicate WeCom bot token: account "${params.accountId}" shares a token with account "${params.ownerAccountId}". ` +
-            "Keep one owner account per bot token.",
-    };
-}
-
-function formatBotAibotidConflict(params: { accountId: string; ownerAccountId: string }): WecomAccountConflict {
-    return {
-        type: "duplicate_bot_aibotid",
-        accountId: params.accountId,
-        ownerAccountId: params.ownerAccountId,
-        message:
-            `Duplicate WeCom bot aibotid: account "${params.accountId}" shares aibotid with account "${params.ownerAccountId}". ` +
-            "Keep one owner account per aibotid.",
-    };
-}
-
-function formatAgentIdConflict(params: { accountId: string; ownerAccountId: string; corpId: string; agentId: number }): WecomAccountConflict {
-    return {
-        type: "duplicate_agent_id",
-        accountId: params.accountId,
-        ownerAccountId: params.ownerAccountId,
-        message:
-            `Duplicate WeCom agent identity: account "${params.accountId}" shares corpId/agentId (${params.corpId}/${params.agentId}) with account "${params.ownerAccountId}". ` +
-            "Keep one owner account per corpId/agentId pair.",
-    };
+function normalizeKey(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function collectWecomAccountConflicts(cfg: OpenClawConfig): Map<string, WecomAccountConflict> {
-    const resolved = resolveWecomAccounts(cfg);
-    const conflicts = new Map<string, WecomAccountConflict>();
-    const botTokenOwners = new Map<string, string>();
-    const botAibotidOwners = new Map<string, string>();
-    const agentOwners = new Map<string, string>();
+  const resolved = resolveWecomAccounts(cfg);
+  const conflicts = new Map<string, WecomAccountConflict>();
+  const botOwners = new Map<string, string>();
+  const agentOwners = new Map<string, string>();
 
-    const accountIds = Object.keys(resolved.accounts).sort((a, b) => a.localeCompare(b));
-    for (const accountId of accountIds) {
-        const account = resolved.accounts[accountId];
-        if (!account || account.enabled === false) {
-            continue;
-        }
-        const bot = account.bot;
-        const agent = account.agent;
+  for (const accountId of Object.keys(resolved.accounts).sort((a, b) => a.localeCompare(b))) {
+    const account = resolved.accounts[accountId];
+    if (!account || account.enabled === false) continue;
 
-        const botToken = bot?.token?.trim();
-        if (botToken) {
-            const key = normalizeDuplicateKey(botToken);
-            const owner = botTokenOwners.get(key);
-            if (owner && owner !== accountId) {
-                conflicts.set(accountId, formatBotTokenConflict({ accountId, ownerAccountId: owner }));
-            } else {
-                botTokenOwners.set(key, accountId);
-            }
-        }
-
-        const botAibotid = bot?.config.aibotid?.trim();
-        if (botAibotid) {
-            const key = normalizeDuplicateKey(botAibotid);
-            const owner = botAibotidOwners.get(key);
-            if (owner && owner !== accountId) {
-                conflicts.set(accountId, formatBotAibotidConflict({ accountId, ownerAccountId: owner }));
-            } else {
-                botAibotidOwners.set(key, accountId);
-            }
-        }
-
-        const corpId = agent?.corpId?.trim();
-        const agentId = agent?.agentId;
-        if (corpId && typeof agentId === "number" && Number.isFinite(agentId)) {
-            const key = `${normalizeDuplicateKey(corpId)}:${agentId}`;
-            const owner = agentOwners.get(key);
-            if (owner && owner !== accountId) {
-                conflicts.set(accountId, formatAgentIdConflict({ accountId, ownerAccountId: owner, corpId, agentId }));
-            } else {
-                agentOwners.set(key, accountId);
-            }
-        }
+    const botId = account.bot?.botId?.trim();
+    if (botId) {
+      const key = normalizeKey(botId);
+      const owner = botOwners.get(key);
+      if (owner && owner !== accountId) {
+        conflicts.set(accountId, {
+          type: "duplicate_bot_id",
+          accountId,
+          ownerAccountId: owner,
+          message:
+            `Duplicate WeCom botId: account "${accountId}" shares botId with account "${owner}". ` +
+            "Keep one owner account per botId.",
+        });
+      } else {
+        botOwners.set(key, accountId);
+      }
     }
 
-    return conflicts;
+    const corpId = account.agent?.corpId?.trim();
+    const agentId = account.agent?.agentId;
+    if (corpId && typeof agentId === "number") {
+      const key = `${normalizeKey(corpId)}:${agentId}`;
+      const owner = agentOwners.get(key);
+      if (owner && owner !== accountId) {
+        conflicts.set(accountId, {
+          type: "duplicate_agent_id",
+          accountId,
+          ownerAccountId: owner,
+          message:
+            `Duplicate WeCom agent identity: account "${accountId}" shares corpId/agentId (${corpId}/${agentId}) with account "${owner}". ` +
+            "Keep one owner account per corpId/agentId pair.",
+        });
+      } else {
+        agentOwners.set(key, accountId);
+      }
+    }
+  }
+
+  return conflicts;
 }
 
 export function resolveWecomAccountConflict(params: {
-    cfg: OpenClawConfig;
-    accountId: string;
+  cfg: OpenClawConfig;
+  accountId: string;
 }): WecomAccountConflict | undefined {
-    return collectWecomAccountConflicts(params.cfg).get(params.accountId);
+  return collectWecomAccountConflicts(params.cfg).get(params.accountId);
 }
 
 export function listWecomAccountIds(cfg: OpenClawConfig): string[] {
-    const wecom = cfg.channels?.wecom as WecomConfig | undefined;
-    const mode = detectMode(wecom);
-    if (mode === "matrix" && wecom?.accounts) {
-        const ids = Object.keys(wecom.accounts)
-            .map((id) => id.trim())
-            .filter(Boolean)
-            .sort((a, b) => a.localeCompare(b));
-        if (ids.length > 0) return ids;
-    }
+  const wecom = cfg.channels?.wecom as WecomConfig | undefined;
+  const mode = detectMode(wecom);
+  if (mode === "matrix") {
+    return Object.keys(wecom?.accounts ?? {})
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  }
+  if (mode === "legacy") {
     return [DEFAULT_ACCOUNT_ID];
+  }
+  return [];
 }
 
 export function resolveDefaultWecomAccountId(cfg: OpenClawConfig): string {
-    const wecom = cfg.channels?.wecom as WecomConfig | undefined;
-    const ids = listWecomAccountIds(cfg);
-    const preferred = wecom?.defaultAccount?.trim();
-    if (preferred && ids.includes(preferred)) return preferred;
-    return ids[0] ?? DEFAULT_ACCOUNT_ID;
+  const wecom = cfg.channels?.wecom as WecomConfig | undefined;
+  const ids = listWecomAccountIds(cfg);
+  if (wecom?.defaultAccount && ids.includes(wecom.defaultAccount)) {
+    return wecom.defaultAccount;
+  }
+  return ids[0] ?? DEFAULT_ACCOUNT_ID;
+}
+
+export function resolveWecomAccounts(cfg: OpenClawConfig): ResolvedWecomAccounts {
+  const wecom = (cfg.channels?.wecom as WecomConfig | undefined) ?? {};
+  const mode = detectMode(wecom);
+  const accounts = mode === "matrix" ? resolveMatrixAccounts(wecom) : mode === "legacy" ? resolveLegacyAccounts(wecom) : {};
+  const defaultAccountId = resolveDefaultWecomAccountId(cfg);
+  return {
+    mode,
+    defaultAccountId,
+    accounts,
+    bot: accounts[defaultAccountId]?.bot,
+    agent: accounts[defaultAccountId]?.agent,
+  };
 }
 
 export function resolveWecomAccount(params: {
-    cfg: OpenClawConfig;
-    accountId?: string | null;
+  cfg: OpenClawConfig;
+  accountId?: string | null;
 }): ResolvedWecomAccount {
-    const resolved = resolveWecomAccounts(params.cfg);
-    const fallbackId = resolved.defaultAccountId;
-    const requestedId = params.accountId?.trim();
-    if (requestedId) {
-        return (
-            resolved.accounts[requestedId] ??
-            toResolvedAccount({
-                accountId: requestedId,
-                enabled: false,
-                config: {},
-            })
-        );
-    }
-    return (
-        resolved.accounts[fallbackId] ??
-        resolved.accounts[DEFAULT_ACCOUNT_ID] ??
-        toResolvedAccount({
-            accountId: fallbackId,
-            enabled: false,
-            config: {},
-        })
-    );
+  const resolved = resolveWecomAccounts(params.cfg);
+  const accountId = params.accountId?.trim() || resolved.defaultAccountId;
+  const account = resolved.accounts[accountId];
+  if (!account) {
+    throw new Error(`WeCom account "${accountId}" not found.`);
+  }
+  return account;
 }
 
-/**
- * 解析 WeCom 账号 (双模式)
- */
-export function resolveWecomAccounts(cfg: OpenClawConfig): ResolvedWecomAccounts {
-    const wecom = cfg.channels?.wecom as WecomConfig | undefined;
-
-    if (!wecom || wecom.enabled === false) {
-        return {
-            mode: "disabled",
-            defaultAccountId: DEFAULT_ACCOUNT_ID,
-            accounts: {},
-        };
-    }
-
-    const mode = detectMode(wecom);
-    const accounts = mode === "matrix" ? resolveMatrixAccounts(wecom) : resolveLegacyAccounts(wecom);
-    const defaultAccountId = resolveDefaultWecomAccountId(cfg);
-    const defaultAccount = accounts[defaultAccountId] ?? accounts[DEFAULT_ACCOUNT_ID];
-
-    return {
-        mode,
-        defaultAccountId,
-        accounts,
-        bot: defaultAccount?.bot,
-        agent: defaultAccount?.agent,
-    };
-}
-
-/**
- * 检查是否有任何模式启用
- */
 export function isWecomEnabled(cfg: OpenClawConfig): boolean {
-    const resolved = resolveWecomAccounts(cfg);
-    return Object.values(resolved.accounts).some((account) => account.configured && account.enabled);
+  const resolved = resolveWecomAccounts(cfg);
+  return Object.values(resolved.accounts).some((account) => account.enabled && account.configured);
 }

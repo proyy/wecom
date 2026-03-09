@@ -15,12 +15,11 @@ vi.mock("../config/index.js", () => ({
   resolveWecomEgressProxyUrlFromNetwork: resolveProxyMock,
 }));
 
-import { uploadMedia } from "./api-client.js";
+import { uploadMedia } from "../transport/agent-api/core.js";
 
 function createAgent(agentId: number): ResolvedAgentAccount {
   return {
     accountId: `acct-${agentId}`,
-    enabled: true,
     configured: true,
     corpId: "corp",
     corpSecret: "secret",

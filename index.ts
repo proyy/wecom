@@ -10,16 +10,16 @@ import { wecomPlugin } from "./src/channel.js";
 
 const plugin = {
   id: "wecom",
-  name: "WeCom",
-  description: "OpenClaw WeCom (WeChat Work) intelligent bot channel plugin",
+  name: "WeCom (企业微信)",
+  description: "企业微信官方推荐三方插件，默认 Bot WS，支持主动发消息与统一运行时能力",
   configSchema: emptyPluginConfigSchema(),
   /**
    * **register (注册插件)**
    *
    * OpenClaw 插件入口点。
-   * 1. 注入 Runtime 环境 (api.runtime)。
-   * 2. 注册 WeCom 渠道插件 (ChannelPlugin)。
-   * 3. 注册 Webhook HTTP 路由（推荐 /plugins/wecom/*，兼容 /wecom*）。
+   * 1. 注入统一 runtime compatibility layer。
+   * 2. 注册 capability-first WeCom 渠道插件。
+   * 3. 注册统一 HTTP 入口（所有 webhook 请求都走共享路由器）。
    */
   register(api: OpenClawPluginApi) {
     setWecomRuntime(api.runtime);

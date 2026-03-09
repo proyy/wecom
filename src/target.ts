@@ -20,6 +20,12 @@ export interface WecomTarget {
     chatid?: string;
 }
 
+export interface ScopedWecomTarget {
+    accountId?: string;
+    target: WecomTarget;
+    rawTarget: string;
+}
+
 /**
  * Parses a raw target string into a WeComTarget object.
  * 解析原始目标字符串为 WeComTarget 对象。
@@ -77,4 +83,26 @@ export function resolveWecomTarget(raw: string | undefined): WecomTarget | undef
 
     // Default to User (默认为用户)
     return { touser: clean };
+}
+
+export function resolveScopedWecomTarget(raw: string | undefined, defaultAccountId?: string): ScopedWecomTarget | undefined {
+    if (!raw?.trim()) return undefined;
+
+    const trimmed = raw.trim();
+    const agentScoped = trimmed.match(/^wecom-agent:([^:]+):(.+)$/i);
+    if (agentScoped) {
+        const accountId = agentScoped[1]?.trim() || defaultAccountId;
+        const rawTarget = agentScoped[2]?.trim() || "";
+        const target = resolveWecomTarget(rawTarget);
+        return target ? { accountId, target, rawTarget } : undefined;
+    }
+
+    const target = resolveWecomTarget(trimmed);
+    return target
+        ? {
+            accountId: defaultAccountId,
+            target,
+            rawTarget: trimmed,
+        }
+        : undefined;
 }

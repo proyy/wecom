@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./agent/api-client.js", () => ({
+vi.mock("./transport/agent-api/core.js", () => ({
   sendText: vi.fn(),
   sendMedia: vi.fn(),
   uploadMedia: vi.fn(),
@@ -16,7 +16,7 @@ describe("wecomOutbound", () => {
         text: "caption",
         mediaUrl: "https://example.com/media.png",
       } as any),
-    ).rejects.toThrow(/Agent mode/i);
+    ).rejects.toThrow(/account "default" not found/i);
   });
 
   it("throws explicit error when outbound accountId does not exist", async () => {
@@ -53,7 +53,7 @@ describe("wecomOutbound", () => {
 
   it("routes sendText to agent chatId/userid", async () => {
     const { wecomOutbound } = await import("./outbound.js");
-    const api = await import("./agent/api-client.js");
+    const api = await import("./transport/agent-api/core.js");
     const now = vi.spyOn(Date, "now").mockReturnValue(123);
     (api.sendText as any).mockResolvedValue(undefined);
 
@@ -132,7 +132,7 @@ describe("wecomOutbound", () => {
 
   it("suppresses /new ack for bot sessions but not agent sessions", async () => {
     const { wecomOutbound } = await import("./outbound.js");
-    const api = await import("./agent/api-client.js");
+    const api = await import("./transport/agent-api/core.js");
     const now = vi.spyOn(Date, "now").mockReturnValue(456);
     (api.sendText as any).mockResolvedValue(undefined);
     (api.sendText as any).mockClear();
@@ -175,7 +175,7 @@ describe("wecomOutbound", () => {
 
   it("uses account-scoped agent config in matrix mode", async () => {
     const { wecomOutbound } = await import("./outbound.js");
-    const api = await import("./agent/api-client.js");
+    const api = await import("./transport/agent-api/core.js");
     (api.sendText as any).mockResolvedValue(undefined);
     (api.sendText as any).mockClear();
 

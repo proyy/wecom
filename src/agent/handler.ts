@@ -18,12 +18,14 @@ import {
     extractFileName,
     extractAgentId,
 } from "../shared/xml-parser.js";
-import { sendText, downloadMedia } from "./api-client.js";
+import { downloadAgentApiMedia, sendAgentApiText } from "../transport/agent-api/client.js";
 import { getWecomRuntime } from "../runtime.js";
 import type { WecomAgentInboundMessage } from "../types/index.js";
+import type { TransportSessionPatch } from "../types/index.js";
 import { buildWecomUnauthorizedCommandPrompt, resolveWecomCommandAuthorization } from "../shared/command-auth.js";
 import { resolveWecomMediaMaxBytes, shouldRejectWecomDefaultRoute } from "../config/index.js";
-import { generateAgentId, shouldUseDynamicAgent, ensureDynamicAgentListed } from "../dynamic-agent.js";
+import { buildAgentSessionTarget, generateAgentId, shouldUseDynamicAgent, ensureDynamicAgentListed } from "../dynamic-agent.js";
+import type { WecomRuntimeAuditEvent } from "../types/runtime-context.js";
 
 /** 错误提示信息 */
 const ERROR_HELP = "\n\n遇到问题？联系作者: YanHaidao (微信: YanHaidao)";
@@ -122,6 +124,8 @@ export type AgentWebhookParams = {
     core: PluginRuntime;
     log?: (msg: string) => void;
     error?: (msg: string) => void;
+    auditSink?: (event: WecomRuntimeAuditEvent) => void;
+    touchTransportSession?: (patch: TransportSessionPatch) => void;
 };
 
 export type AgentInboundProcessDecision = {
@@ -194,7 +198,7 @@ function resolveQueryParams(req: IncomingMessage): URLSearchParams {
  * 处理消息回调 (POST)
  */
 async function handleMessageCallback(params: AgentWebhookParams): Promise<boolean> {
-    const { req, res, verifiedPost, agent, config, core, log, error } = params;
+    const { req, res, verifiedPost, agent, config, core, log, error, auditSink } = params;
 
     try {
         if (!verifiedPost) {
@@ -241,6 +245,17 @@ async function handleMessageCallback(params: AgentWebhookParams): Promise<boolea
             const ok = rememberAgentMsgId(msgId);
             if (!ok) {
                 log?.(`[wecom-agent] duplicate msgId=${msgId} from=${fromUser} chatId=${chatId ?? "N/A"} type=${msgType}; skipped`);
+                auditSink?.({
+                    transport: "agent-callback",
+                    category: "duplicate-reply",
+                    messageId: msgId,
+                    summary: `duplicate agent callback from=${fromUser} chatId=${chatId ?? "N/A"} type=${msgType}`,
+                    raw: {
+                        transport: "agent-callback",
+                        envelopeType: "xml",
+                        body: msg,
+                    },
+                });
                 res.statusCode = 200;
                 res.setHeader("Content-Type", "text/plain; charset=utf-8");
                 res.end("success");
@@ -281,6 +296,8 @@ async function handleMessageCallback(params: AgentWebhookParams): Promise<boolea
             msg,
             log,
             error,
+            auditSink,
+            touchTransportSession: params.touchTransportSession,
         }).catch((err) => {
             error?.(`[wecom-agent] process failed: ${String(err)}`);
         });
@@ -317,8 +334,10 @@ async function processAgentMessage(params: {
     msg: WecomAgentInboundMessage;
     log?: (msg: string) => void;
     error?: (msg: string) => void;
+    auditSink?: (event: WecomRuntimeAuditEvent) => void;
+    touchTransportSession?: (patch: TransportSessionPatch) => void;
 }): Promise<void> {
-    const { agent, config, core, fromUser, chatId, content, msg, msgType, log, error } = params;
+    const { agent, config, core, fromUser, chatId, content, msg, msgType, log, error, auditSink, touchTransportSession } = params;
 
     const isGroup = Boolean(chatId);
     const peerId = isGroup ? chatId! : fromUser;
@@ -335,7 +354,7 @@ async function processAgentMessage(params: {
         if (mediaId) {
             try {
                 log?.(`[wecom-agent] downloading media: ${mediaId} (${msgType})`);
-                const { buffer, contentType, filename: headerFileName } = await downloadMedia({ agent, mediaId, maxBytes: mediaMaxBytes });
+                const { buffer, contentType, filename: headerFileName } = await downloadAgentApiMedia({ agent, mediaId, maxBytes: mediaMaxBytes });
                 const xmlFileName = extractFileName(msg);
                 const originalFileName = (xmlFileName || headerFileName || `${mediaId}.bin`).trim();
                 const heuristic = analyzeTextHeuristic(buffer);
@@ -413,6 +432,18 @@ async function processAgentMessage(params: {
                 log?.(`[wecom-agent] file preview: enabled=${looksText} finalContentLen=${finalContent.length} attachments=${attachments.length}`);
             } catch (err) {
                 error?.(`[wecom-agent] media processing failed: ${String(err)}`);
+                auditSink?.({
+                    transport: "agent-callback",
+                    category: "runtime-error",
+                    messageId: extractMsgId(msg) ?? undefined,
+                    summary: `agent media processing failed mediaId=${mediaId}`,
+                    raw: {
+                        transport: "agent-callback",
+                        envelopeType: "xml",
+                        body: msg,
+                    },
+                    error: err instanceof Error ? err.message : String(err),
+                });
                 finalContent = [
                     content,
                     "",
@@ -450,10 +481,22 @@ async function processAgentMessage(params: {
             `[wecom-agent] routing guard: blocked default fallback accountId=${agent.accountId} matchedBy=${route.matchedBy} from=${fromUser}`,
         );
         try {
-            await sendText({ agent, toUser: fromUser, chatId: undefined, text: prompt });
+            await sendAgentApiText({ agent, toUser: fromUser, chatId: undefined, text: prompt });
+            touchTransportSession?.({ lastOutboundAt: Date.now(), running: true });
             log?.(`[wecom-agent] routing guard prompt delivered to ${fromUser}`);
         } catch (err: unknown) {
             error?.(`[wecom-agent] routing guard prompt failed: ${String(err)}`);
+            auditSink?.({
+                transport: "agent-callback",
+                category: "fallback-delivery-failed",
+                summary: `routing guard prompt failed user=${fromUser}`,
+                raw: {
+                    transport: "agent-callback",
+                    envelopeType: "xml",
+                    body: msg,
+                },
+                error: err instanceof Error ? err.message : String(err),
+            });
         }
         return;
     }
@@ -504,10 +547,22 @@ async function processAgentMessage(params: {
     if (authz.shouldComputeAuth && authz.commandAuthorized !== true) {
         const prompt = buildWecomUnauthorizedCommandPrompt({ senderUserId: fromUser, dmPolicy: authz.dmPolicy, scope: "agent" });
         try {
-            await sendText({ agent, toUser: fromUser, chatId: undefined, text: prompt });
+            await sendAgentApiText({ agent, toUser: fromUser, chatId: undefined, text: prompt });
+            touchTransportSession?.({ lastOutboundAt: Date.now(), running: true });
             log?.(`[wecom-agent] unauthorized command: replied via DM to ${fromUser}`);
         } catch (err: unknown) {
             error?.(`[wecom-agent] unauthorized command reply failed: ${String(err)}`);
+            auditSink?.({
+                transport: "agent-callback",
+                category: "fallback-delivery-failed",
+                summary: `unauthorized prompt failed user=${fromUser}`,
+                raw: {
+                    transport: "agent-callback",
+                    envelopeType: "xml",
+                    body: msg,
+                },
+                error: err instanceof Error ? err.message : String(err),
+            });
         }
         return;
     }
@@ -531,7 +586,7 @@ async function processAgentMessage(params: {
         // 标记为 Agent 会话的回复路由目标，避免与 Bot 会话混淆：
         // - 用于让 /new /reset 这类命令回执不被 Bot 侧策略拦截
         // - 群聊场景也统一路由为私信触发者（与 deliver 策略一致）
-        OriginatingTo: `wecom-agent:${fromUser}`,
+        OriginatingTo: buildAgentSessionTarget(fromUser, agent.accountId),
         CommandAuthorized: authz.commandAuthorized ?? true,
         MediaPath: mediaPath,
         MediaType: mediaType,
@@ -552,18 +607,36 @@ async function processAgentMessage(params: {
     await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
         ctx: ctxPayload,
         cfg: config,
+        replyOptions: {
+            disableBlockStreaming: true,
+        },
         dispatcherOptions: {
             deliver: async (payload: { text?: string }, info: { kind: string }) => {
+                if (info.kind !== "final") {
+                    return;
+                }
                 const text = payload.text ?? "";
                 if (!text) return;
 
                 try {
                     // 统一策略：Agent 模式在群聊场景默认只私信触发者（避免 wr/wc chatId 86008）
-                    await sendText({ agent, toUser: fromUser, chatId: undefined, text });
+                    await sendAgentApiText({ agent, toUser: fromUser, chatId: undefined, text });
+                    touchTransportSession?.({ lastOutboundAt: Date.now(), running: true });
                     log?.(`[wecom-agent] reply delivered (${info.kind}) to ${fromUser}`);
                 } catch (err: unknown) {
                     const message = err instanceof Error ? `${err.message}${err.cause ? ` (cause: ${String(err.cause)})` : ""}` : String(err);
                     error?.(`[wecom-agent] reply failed: ${message}`);
+                    auditSink?.({
+                        transport: "agent-callback",
+                        category: "fallback-delivery-failed",
+                        summary: `agent callback reply failed user=${fromUser} kind=${info.kind}`,
+                        raw: {
+                            transport: "agent-callback",
+                            envelopeType: "xml",
+                            body: msg,
+                        },
+                        error: message,
+                    });
                 }            },
             onError: (err: unknown, info: { kind: string }) => {
                 error?.(`[wecom-agent] ${info.kind} reply error: ${String(err)}`);

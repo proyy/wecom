@@ -18,6 +18,15 @@ function getProxyDispatcher(proxyUrl: string): ProxyDispatcher {
   return created;
 }
 
+function summarizeHttpTarget(input: string | URL): string {
+  try {
+    const url = typeof input === "string" ? new URL(input) : input;
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return String(input);
+  }
+}
+
 function mergeAbortSignal(params: {
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -54,6 +63,9 @@ export type WecomHttpOptions = {
 export async function wecomFetch(input: string | URL, init?: RequestInit, opts?: WecomHttpOptions): Promise<Response> {
   const proxyUrl = opts?.proxyUrl?.trim() ?? "";
   const dispatcher = proxyUrl ? getProxyDispatcher(proxyUrl) : undefined;
+  const startedAt = Date.now();
+  const method = (init?.method ?? "GET").toUpperCase();
+  const target = summarizeHttpTarget(input);
 
   const initSignal = init?.signal ?? undefined;
   const signal = mergeAbortSignal({ signal: opts?.signal ?? initSignal, timeoutMs: opts?.timeoutMs });
@@ -71,11 +83,20 @@ export async function wecomFetch(input: string | URL, init?: RequestInit, opts?:
   };
 
   try {
-    return await undiciFetch(input, nextInit as Parameters<typeof undiciFetch>[1]) as unknown as Response;
+    console.log(
+      `[wecom-http] request method=${method} target=${target} proxy=${proxyUrl || "none"} timeoutMs=${String(opts?.timeoutMs ?? "none")}`,
+    );
+    const response = await undiciFetch(input, nextInit as Parameters<typeof undiciFetch>[1]) as unknown as Response;
+    console.log(
+      `[wecom-http] response method=${method} target=${target} status=${response.status} durationMs=${Date.now() - startedAt}`,
+    );
+    return response;
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "TypeError" && err.message === "fetch failed") {
       const cause = (err as any).cause;
-      console.error(`[wecom-http] fetch failed: ${input} (proxy: ${proxyUrl || "none"})${cause ? ` - cause: ${String(cause)}` : ""}`);
+      console.error(
+        `[wecom-http] fetch failed method=${method} target=${target} durationMs=${Date.now() - startedAt} proxy=${proxyUrl || "none"}${cause ? ` cause=${String(cause)}` : ""}`,
+      );
     }
     throw err;
   }

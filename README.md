@@ -1,8 +1,5 @@
 # OpenClaw 企业微信（WeCom）Channel 插件
 
-> [!WARNING]
-> **新功能**：最新企业微信长链接适配中，目标全网最强大的企微生态插件，可入群了解最新动态。
-
 <p align="center">
   <img src="https://img.shields.io/badge/Original%20Project-YanHaidao-orange?style=for-the-badge&logo=github" alt="Original Project" />
   <img src="https://img.shields.io/badge/License-ISC-blue?style=for-the-badge" alt="License" />
@@ -13,7 +10,7 @@
 > 欢迎技术交流与合规引用，但**严禁任何不经授权的“功能像素级抄袭”或删除原作者署名的代码搬运行为**。
 
 <p align="center">
-  <strong>🚀 企业级双模式 AI 助手接入方案</strong>
+  <strong>🚀 企业级多模式 AI 助手接入方案（统一运行时架构）</strong>
 </p>
 
 <p align="center">
@@ -21,7 +18,10 @@
   <a href="#sec-2">📊 模式对比</a> •
   <a href="#sec-3">一、快速开始</a> •
   <a href="#sec-4">二、配置说明</a> •
-  <a href="#sec-9">七、联系我</a>
+  <a href="#sec-5">三、企业微信接入</a> •
+  <a href="#sec-6">四、高级功能</a> •
+  <a href="#sec-7">五、详细行为说明</a> •
+  <a href="#sec-9">六、社区与维护</a>
 </p>
 
 ---
@@ -29,7 +29,18 @@
 <a id="sec-1"></a>
 ## 💡 核心价值：为什么选择本插件？
 
-### 独创架构：Bot + Agent 双模融合 (Original Design by YanHaidao)
+### 🎉 重大特性一览
+1. **无需域名，极低门槛**：全面支持基于 WebSocket 的长连接（Bot WS）模式接入企业微信机器人，**彻底打通无公网 IP、无备案域名的内网服务器**与企微的实时对话桥梁！
+2. **主动发消息，能力全覆盖**：基于 Agent 模式，全面支持**主动触达**，轻松实现早报定时任务、服务器异常报警、自动每日总结。
+
+### 🔧 全新统一运行时架构 (Unified Runtime)
+插件现已采用全新解耦架构：
+- **`Bot` / `Agent`** 是能力层 (Capability)。
+- **`WS` / `Webhook` / `Callback` / `API`** 是传输层 (Transport)。
+- 同一账号下，Bot 可以在长连接（WS）和主动回调（Webhook）之间通过 `primaryTransport` 自由无缝切换。
+- HTTP Callback 路径一律由系统基于 `accountId` 全自动派生，告别繁乱的手工 URL 配置。
+
+### 🎭 独创架构：Bot + Agent 双模融合 (Original Design by YanHaidao)
 
 传统的企微插件通常只能在 "只能聊天的机器人 (Bot)" 和 "只能推送的自建应用 (Agent)" 之间二选一。
 本插件采用 **双模并行架构**，同时压榨两种模式的极限能力：
@@ -41,7 +52,8 @@
 
 本插件支持 **无限扩展的账号矩阵**，这是本插件区别于普通插件的核心壁垒：
 
-*   **完全隔离 (Isolation)**：不同 `accountId` 之间的会话、动态 Agent、上下文完全隔离，互不串扰。
+*   **千人千面 (Dynamic Agents)**：内置自动会话隔离机制，百人同时私聊或群聊自动分摊至专属独立助理，告别上下文串扰。
+*   **完全隔离 (Isolation)**：不同 `accountId` 之间的会话、动态 Agent、上下文完全物理隔离，互不串扰。
 *   **矩阵绑定 (Binding)**：支持一个 OpenClaw 实例同时挂载多个企业/多个应用，通过 `bindings` 灵活分发流量。
 *   **智能路由 (Routing)**：基于入站 `accountId` 自动分拣回复路径，Bot 无法回复时仅回退到**同账号组内**的 Agent，实现闭环的高可用。
 
@@ -69,21 +81,23 @@
 <a id="sec-2"></a>
 ## 📊 模式能力对比
 
-| 能力维度            | 🤖 Bot 模式                 | 🧩 Agent 模式                             | ✨ **本插件 (双模)**           |
-| :------------------ | :------------------------- | :--------------------------------------- | :---------------------------- |
-| **接收消息 (单聊)** | ✅ 文本/图片/语音/文件      | ✅ 文本/图片/语音/视频/位置/链接          | **✅ 全能互补** (覆盖所有类型) |
-| **接收消息 (群聊)** | ✅ 文本/引用                | ❌ 不支持 (无回调)                        | **✅ 文本/引用**               |
-| **发送消息**        | ❌ 仅支持文本/图片/Markdown | ✅ **全格式支持** (文本/图片/视频/文件等) | **✅ 智能路由** (自动切换)     |
-| **流式响应**        | ✅ **支持** (打字机效果)    | ❌ 不支持                                 | **✅ 完美支持**                |
-| **主动推送**        | ❌ 仅被动回复               | ✅ **支持** (指定用户/部门/标签)          | **✅ 完整 API**                |
+| 能力维度 | 🤖 Bot 模式 | 🧩 Agent 模式 | ✨ **本插件 (双模)** |
+|:---|:---|:---|:---|
+| **部署网络要求** | ✅ **无需公网IP/域名 (WS)** | ❌ 必须公网IP/域名回调 | **✅ 全环境适用** |
+| **接收消息 (单聊)** | ✅ 文本/图片/语音/文件 | ✅ 文本/图片/语音/视频/位置/链接 | **✅ 全能互补** (覆盖所有类型) |
+| **接收消息 (群聊)** | ✅ 文本/引用 | ❌ 不支持 (群聊无回调) | **✅ 文本/引用** |
+| **回复消息类型** | ❌ 仅文本/图片/Markdown | ✅ **全模态** (文本/图片/视频/文件等) | **✅ 智能路由** (自动判定切换) |
+| **交互卡片 (A2UI)**| ❌ 不支持 | ✅ **支持** (Button/Select等) | **✅ 支持** |
+| **AI 流式响应** | ✅ **支持** (丝滑打字机) | ❌ 不支持 (全部生成完一次发送) | **✅ 完美支持** |
+| **主动触达 (Cron)**| ❌ 仅被动回复/有限推送 | ✅ **全量推送** (指定人/部门/标签) | **✅ 企业级触达** |
 
 ---
 
 <a id="sec-3"></a>
 ## 一、🚀 快速开始
 
-> 默认推荐：**多账号 + 多 Agent（matrix）**。  
-> 建议 OpenClaw 使用 **2026.2.24+** 版本以获得完整生命周期与多账号行为修复。
+> 推荐统一使用**多账号矩阵模型**。 
+> 即使只有一个账号，也建议写在 `channels.wecom.accounts.default` 节点下。
 
 ### 1.1 安装插件
 
@@ -92,110 +106,66 @@ openclaw plugins install @yanhaidao/wecom
 openclaw plugins enable wecom
 ```
 
-也可以通过命令行向导快速配置：
+### 1.2 互动向导式配置 (推荐)
 
+如果你不想手写 JSON 配置文件，可以通过互动式向导完成通道挂载：
+
+1. 确保已通过 npm 安装该插件：`openclaw plugins install @yanhaidao/wecom`并且启用了 `openclaw plugins enable wecom`
+2. 在终端中，输入以下命令，添加渠道：
 ```bash
-openclaw config --section channels
+openclaw channels add
 ```
+3. 在「Select channel」步骤的下拉列表中，找到并选择：**企业微信 (WeCom)**
+4. 按照屏幕终端提示，依次填入企业微信机器人 `Bot ID` 及 `Secret` 等必填项即可。
 
-### 1.2 推荐配置：多账号 + 多 Agent（默认）
+向导完成后，后台服务将自动装载你的配置并尝试建立长连接通信。
 
-直接用命令写入多 `accountId` 配置（会写入 `~/.openclaw/openclaw.json`）：
+### 1.3 推荐配置结构（Bot + Agent 组合版）
 
-```bash
-# 1) 打开 WeCom 通道并设置默认账号
-openclaw config set channels.wecom.enabled true
-openclaw config set channels.wecom.defaultAccount ops
-
-# 2) 新增 ops 账号（Bot + Agent）
-openclaw config set channels.wecom.accounts.ops '{
-  "enabled": true,
-  "name": "运维机器人",
-  "bot": {
-    "aibotid": "BOT_OPS",
-    "token": "BOT_TOKEN_OPS",
-    "encodingAESKey": "BOT_AES_OPS",
-    "receiveId": ""
-  },
-  "agent": {
-    "corpId": "CORP_ID",
-    "corpSecret": "AGENT_SECRET_OPS",
-    "agentId": 1000001,
-    "token": "AGENT_TOKEN_OPS",
-    "encodingAESKey": "AGENT_AES_OPS"
-  }
-}'
-
-# 3) 新增 sales 账号（Bot + Agent）
-openclaw config set channels.wecom.accounts.sales '{
-  "enabled": true,
-  "name": "销售机器人",
-  "bot": {
-    "aibotid": "BOT_SALES",
-    "token": "BOT_TOKEN_SALES",
-    "encodingAESKey": "BOT_AES_SALES",
-    "receiveId": ""
-  },
-  "agent": {
-    "corpId": "CORP_ID",
-    "corpSecret": "AGENT_SECRET_SALES",
-    "agentId": 1000002,
-    "token": "AGENT_TOKEN_SALES",
-    "encodingAESKey": "AGENT_AES_SALES"
-  }
-}'
-
-# 4) 绑定到不同 OpenClaw agent（按你的实际 agentId 修改）
-openclaw config set bindings '[{"agentId":"ops-agent","match":{"channel":"wecom","accountId":"ops"}},{"agentId":"sales-agent","match":{"channel":"wecom","accountId":"sales"}}]'
-
-# 5) 验证配置
-openclaw config get channels.wecom
-openclaw channels status
-```
-
-Webhook 回调建议按账号分别配置：
-- Bot（推荐）：`/plugins/wecom/bot/{accountId}`
-- Agent（推荐）：`/plugins/wecom/agent/{accountId}`
-
-> 提示：如果你已有 `bindings`，请先备份并按需合并，避免覆盖其它通道绑定。
-
-### 1.3 高级网络配置（公网出口代理）
-如果您的服务器使用 **动态 IP** (如家庭宽带、内网穿透) 或 **无公网 IP**，企业微信 API 会因 IP 变动报错 `60020 not allow to access from your ip`。
-此时需配置一个**固定 IP 的正向代理** (如 Squid)，让插件通过该代理访问企微 API。
-
-```bash
-openclaw config set channels.wecom.network.egressProxyUrl "http://proxy.company.local:3128"
-```
-
-### 1.4 验证
-
-```bash
-openclaw config set gateway.bind lan
-openclaw gateway restart
-openclaw channels status
-```
-
----
-
-<a id="sec-4"></a>
-
-## 二、⚙️ 配置说明
-
-### 2.1 推荐配置结构（多账号 + 多 Agent）
-
-一个 `accountId` 就是一组独立通道：
-- 一组 `bot`（群聊/流式主通道）
-- 一组 `agent`（文件/超时/主动消息兜底）
-- 一组路由绑定（只进同组 Agent，不跨账号）
+这是生产环境最推荐的形态（进阶纯手工配置），兼顾了快速流式体验与 Agent 强大的兜底分发能力。如果您是给企业配置多名矩阵助理，或需要启动 Agent 兜底能力和定时推送能力，请进入 OpenClaw 的配置文件直接写入 JSON。以下是生产环境最推荐的综合形态：
 
 ```jsonc
 {
   "channels": {
     "wecom": {
-      "enabled": true,                       // 通道总开关
-      "defaultAccount": "ops",              // 未显式指定 accountId 时使用
-
-      // 通道级全局配置（当前不是 per-account）
+      "enabled": true,
+      "defaultAccount": "default",
+      "accounts": {
+        "default": {
+          "enabled": true,
+          "name": "默认企微账号",
+          "bot": {
+            "primaryTransport": "ws",             // 指定 Bot 主通讯协议：ws 或 webhook
+            "streamPlaceholderContent": "正在思考...",
+            "welcomeText": "你好，我已接入 OpenClaw。",
+            "dm": {
+              "policy": "pairing",
+              "allowFrom": []
+            },
+            "ws": {                               // Bot WS 配置
+              "botId": "BOT_ID",
+              "secret": "BOT_SECRET"
+            },
+            "webhook": {                          // Bot Webhook 配置 (按需)
+              "token": "BOT_TOKEN",
+              "encodingAESKey": "BOT_AES_KEY",
+              "receiveId": "BOT_RECEIVE_ID"
+            }
+          },
+          "agent": {
+            "corpId": "CORP_ID",
+            "corpSecret": "CORP_SECRET",
+            "agentId": 1000001,
+            "token": "AGENT_TOKEN",
+            "encodingAESKey": "AGENT_AES_KEY",
+            "welcomeText": "你好，这里是 Agent 通道。",
+            "dm": {
+              "policy": "open",
+              "allowFrom": []
+            }
+          }
+        }
+      },
       "media": {
         "tempDir": "/tmp/openclaw-wecom-media",
         "retentionHours": 24,
@@ -203,115 +173,106 @@ openclaw channels status
         "maxBytes": 26214400
       },
       "network": {
-        "timeoutMs": 15000,
-        "retries": 2,
-        "retryDelayMs": 500,
-        "egressProxyUrl": "http://proxy.company.local:3128"
+        "egressProxyUrl": "http://127.0.0.1:3128"
+      },
+      "routing": {
+        "failClosedOnDefaultRoute": true
       },
       "dynamicAgents": {
         "enabled": true,
         "dmCreateAgent": true,
-        "groupEnabled": false,
+        "groupEnabled": true,
         "adminUsers": ["zhangsan"]
-      },
-
-      "accounts": {
-        "ops": {
-          "enabled": true,
-          "name": "运维机器人",
-          "bot": {
-            "aibotid": "BOT_OPS",
-            "token": "BOT_TOKEN_OPS",
-            "encodingAESKey": "BOT_AES_OPS",
-            "botIds": ["BOT_OPS", "BOT_OPS_BAK"],
-            "receiveId": "",
-            "streamPlaceholderContent": "正在思考...",
-            "welcomeText": "你好，我是运维助手",
-            "dm": {
-              "policy": "allowlist",
-              "allowFrom": ["zhangsan", "lisi"]
-            }
-          },
-          "agent": {
-            "corpId": "CORP_ID",
-            "corpSecret": "AGENT_SECRET_OPS",
-            "agentId": 1000001,
-            "token": "AGENT_TOKEN_OPS",
-            "encodingAESKey": "AGENT_AES_OPS",
-            "welcomeText": "欢迎联系运维助手",
-            "dm": {
-              "policy": "open",
-              "allowFrom": ["*"]
-            }
-          }
-        },
-        "sales": {
-          "enabled": true,
-          "name": "销售机器人",
-          "bot": {
-            "aibotid": "BOT_SALES",
-            "token": "BOT_TOKEN_SALES",
-            "encodingAESKey": "BOT_AES_SALES",
-            "receiveId": "",
-            "streamPlaceholderContent": "正在整理销售建议...",
-            "welcomeText": "你好，我是销售助手",
-            "dm": {
-              "policy": "pairing"
-            }
-          },
-          "agent": {
-            "corpId": "CORP_ID",
-            "corpSecret": "AGENT_SECRET_SALES",
-            "agentId": 1000002,
-            "token": "AGENT_TOKEN_SALES",
-            "encodingAESKey": "AGENT_AES_SALES",
-            "welcomeText": "欢迎咨询销售问题",
-            "dm": {
-              "policy": "pairing"
-            }
-          }
-        }
       }
     }
-  },
-  "bindings": [
-    { "agentId": "ops-agent", "match": { "channel": "wecom", "accountId": "ops" } },
-    { "agentId": "sales-agent", "match": { "channel": "wecom", "accountId": "sales" } }
-  ]
+  }
 }
 ```
 
-### 2.2 路由第一性原则
+### 1.3 高级网络配置（公网出口代理）
+如果您的服务器使用 **动态 IP** (如家庭宽带、内网穿透) 或 **无公网 IP**，首先使用Bot模式的ws接入方式。
 
-- `accountId` 是会话隔离边界：不同账号不共享会话、不共享动态 Agent。
-- Bot 无法交付时，只回退到**同组** Agent，不跨账号兜底。
-- 只有在未显式指定 `accountId` 时，才使用 `defaultAccount`。
+企业微信 API 会因 IP 变动报错 `60020 not allow to access from your ip`。
+此时需配置一个**固定 IP 的正向代理** (如 Squid)，让插件通过该代理访问企微 API。
 
-### 2.3 Webhook 路径（必须使用账号路径）
+```bash
+openclaw config set channels.wecom.network.egressProxyUrl "http://proxy.company.local:3128"
+```
 
-| 模式                  | 路径                               | 说明                                                |
-| :-------------------- | :--------------------------------- | :-------------------------------------------------- |
-| Bot（推荐，多账号）   | `/plugins/wecom/bot/{accountId}`   | 指定账号回调（例如 `/plugins/wecom/bot/default`）   |
-| Agent（推荐，多账号） | `/plugins/wecom/agent/{accountId}` | 指定账号回调（例如 `/plugins/wecom/agent/default`） |
+### 1.4 验证启动与观测
 
-### 2.4 从单账号迁移到多账号（4 步）
+使用最新的自检命令以检查通道装载、端口绑定与运行情况：
+```bash
+openclaw channels status --deep
+```
 
-1. 把原来的 `channels.wecom.bot` / `channels.wecom.agent` 拆到 `channels.wecom.accounts.default.bot/agent`。
-2. 按业务继续新增 `channels.wecom.accounts.<accountId>`（例如 `ops`、`sales`）。
-3. 为每个账号增加 `bindings[].match.accountId`，映射到对应 OpenClaw agent。
-4. 企业微信后台把回调 URL 改成账号路径：`/plugins/wecom/bot/{accountId}`、`/plugins/wecom/agent/{accountId}`，然后执行 `openclaw channels status` 验证。
+建议重点看这几个核心状态指标是否健康：
+- `primaryTransport` / `transport` / `health`
 
-### 2.5 DM 策略
+---
 
-- **不配置 `dm.allowFrom`** → 所有人可用（默认）
-- **配置 `dm.allowFrom: ["user1", "user2"]`** → 白名单模式，仅列表内用户可私聊
+<a id="sec-4"></a>
 
-### 2.6 常用指令
+## 二、⚙️ 三模配置模式详解
 
-| 指令     | 说明                      | 示例                   |
-| :------- | :------------------------ | :--------------------- |
-| `/new`   | 🆕 开启新会话 (重置上下文) | `/new` 或 `/new GPT-4` |
-| `/reset` | 🔄 重置会话 (同 /new)      | `/reset`               |
+新版已分离 `Transport` 传输层，以下是独立运转模式的基本构成（你可以随意组合它们入同一个 account）：
+
+### 2.1 仅 Bot WS 模式
+最简的流式交互版（无兜底分发功能）。
+关键约束：`bot.primaryTransport = "ws"` 必须包含 `bot.ws` 参数。
+
+```jsonc
+{
+  "accounts": {
+    "default": {
+      "bot": {
+        "primaryTransport": "ws",
+        "ws": { "botId": "BOT_ID", "secret": "BOT_SECRET" }
+      }
+    }
+  }
+}
+```
+
+### 2.2 仅 Bot Webhook 模式
+针对某些无法建立高可靠 WS 网关的环境，退化使用 URL 回调。
+关键约束：`bot.primaryTransport = "webhook"` 必须包含 `bot.webhook` 参数。
+
+```jsonc
+{
+  "accounts": {
+    "default": {
+      "bot": {
+        "primaryTransport": "webhook",
+        "webhook": { "token": "BOT_TOKEN", "encodingAESKey": "BOT_AES_KEY" }
+      }
+    }
+  }
+}
+```
+
+### 2.3 自动分流与会话隔离 (dynamicAgents)
+
+这属于插件的**全局网络与行为组**。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `enabled` | `boolean` | 是否启用动态 Agent |
+| `dmCreateAgent` | `boolean` | 私聊是否自动建 Agent |
+| `groupEnabled` | `boolean` | 群聊是否允许动态 Agent |
+| `adminUsers` | `string[]` | 管理员白名单 |
+
+#### 场景说明（解决真实企业痛点）
+企业场景下，当多名同事或多个群组同时与系统交互时，系统默认只会连接同一个全局 AI Agent。这会导致**会话上下文串扰（张三发的问题，李四接着问，上下文混乱）**。
+
+开启 `dynamicAgents` 后，可以解决此痛点，实现**“千人千面、万群万脑”**的并发隔离机制：
+- **`enabled` (总开关)**：一旦打开，系统会自动为每个会话的来源进行分流，并动态生成专属的底层 Agent 实例（如 `wecom-default-dm-张三`），无需人工配置。
+- **`dmCreateAgent` (私聊自动建号)**：实现员工私人助理模式。每个人私聊发消息，系统都会临时绑定独立记忆的专属助理，避免为全公司几百人挨个去后台扫码建号配置。
+- **`groupEnabled` (群聊自动分群)**：实现各个群聊主题封闭。A 群的讨论话题绝不会串扰到 B 群。
+- **`adminUsers` (管理员特权后门)**：填入管理员的微信 ID。遇到这几个人发消息时，系统**不会**去进动态 Agent 隔离区，而是直通后端的主控制台 Agent，以便执行全网管理指令。
+
+> **🌟 多账号矩阵下的全局生效与物理隔离**
+> `dynamicAgents` 属于通道级的全局开关，开启后会对配置的所有账号（`accounts`）生效。为了维持账号的绝对隔离，生成的隔离 Agent ID 内置了 Account 维度（例如：`wecom-ops-dm-张三` vs `wecom-sales-dm-张三`），保证跨企业应用依旧安全隔绝。
 
 ---
 
@@ -319,24 +280,21 @@ openclaw channels status
 
 ## 三、🏢 企业微信接入指南
 
-### 3.1 Bot 模式（智能机器人）
+新版系统已将 Callback 回调处理实现了**全自动的账号分流路径派生**，开发者不要在配置里手工定义 `ReceiveID` 的硬编码路由覆盖，请在企业微信管理后台直接指向对应路径。
 
-1. 登录 [企业微信管理后台](https://work.weixin.qq.com/wework_admin/frame#/manageTools)
-2. 进入「安全与管理」→「管理工具」→「智能机器人」
-3. 创建机器人，选择 **API 模式**
-4. 填写回调 URL：`https://your-domain.com/plugins/wecom/bot/{accountId}`（例如默认账号：`https://your-domain.com/plugins/wecom/bot/default`）
-5. 记录 Token 和 EncodingAESKey
+### 3.1 明确各类模式的目标路径
 
-### 3.2 Agent 模式（自建应用）
+| 类型 | 默认账号 | 非默认账号 (如 ops) |
+|---|---|---|
+| **Bot Webhook** | `/plugins/wecom/bot/default` | `/plugins/wecom/bot/ops` |
+| **Agent Callback** | `/plugins/wecom/agent/default`| `/plugins/wecom/agent/ops` |
 
-1. 登录 [企业微信管理后台](https://work.weixin.qq.com/wework_admin/frame#/apps)
-2. 进入「应用管理」→「自建」→ 创建应用
-3. 获取 AgentId、CorpId、Secret
-4. **重要：** 进入「企业可信IP」→「配置」→ 添加你服务器的 IP 地址
-   - 如果你使用内网穿透/动态 IP，建议配置 `channels.wecom.network.egressProxyUrl` 走固定出口代理，否则可能出现：`60020 not allow to access from your ip`
-5. 在应用详情中设置「接收消息 - 设置API接收」
-6. 填写回调 URL：`https://your-domain.com/plugins/wecom/agent/{accountId}`（例如默认账号：`https://your-domain.com/plugins/wecom/agent/default`）
-7. 记录回调 Token 和 EncodingAESKey
+*(注：系统通过智能中间件，若只配了 default 且你访问 `/plugins/wecom/bot` 无后缀，也会尝试自动漂移至 default，但**极不建议**，必须写标准账号名后缀以规避未来扩展冲突。)*
+
+### 3.2 下发路由至企业微信后台
+1. 登录企业微信管理后台
+2. 机器人填入回调 URL：`https://your-domain.com/plugins/wecom/bot/{accountId}`
+3. 自建应用填入回调 URL：`https://your-domain.com/plugins/wecom/agent/{accountId}` (不要忘记加可信IP)。
 
 <div align="center">
   <img src="https://cdn.jsdelivr.net/npm/@yanhaidao/wecom@latest/assets/03.bot.page.png" width="45%" alt="Bot Config" />
@@ -358,8 +316,6 @@ Agent 输出 `{"template_card": ...}` 时自动渲染为交互卡片：
 - ✅ 自动去重：基于 `msgid` 避免重复处理
 - ⚠️ 群聊降级：自动转为文本描述
 
-
-
 ### 4.2 ⏰ Cronjob 企业级定时推送
 
 本插件深度集成了 OpenClaw 的 Cronjob 调度能力，配合 Agent 强大的广播 API，轻松实现企业级通知服务。
@@ -369,12 +325,12 @@ Agent 输出 `{"template_card": ...}` 时自动渲染为交互卡片：
 #### 4.2.1 目标配置 (Target)
 无需遍历用户列表，直接利用 Agent 强大的组织架构触达能力：
 
-| 目标类型           | 格式示例           | 推送范围       | 典型场景                     |
-| :----------------- | :----------------- | :------------- | :--------------------------- |
-| **部门 (Party)**   | `party:1` (或 `1`) | 📢 **全员广播** | 全员通知、技术部周报         |
-| **标签 (Tag)**     | `tag:Ops`          | 🎯 **精准分组** | 运维报警、管理层汇报         |
-| **外部群 (Group)** | `group:wr...`      | 💬 **群聊推送** | 项目组群日报 (需由Agent建群) |
-| **用户 (User)**    | `user:zhangsan`    | 👤 **即时私信** | 个人待办提醒                 |
+| 目标类型 | 格式示例 | 推送范围 | 典型场景 |
+|:---|:---|:---|:---|
+| **部门 (Party)** | `party:1` (或 `1`) | 📢 **全员广播** | 全员通知、技术部周报 |
+| **标签 (Tag)** | `tag:Ops` | 🎯 **精准分组** | 运维报警、管理层汇报 |
+| **外部群 (Group)** | `group:wr...` | 💬 **群聊推送** | 项目组群日报 (需由Agent建群) |
+| **用户 (User)** | `user:zhangsan` | 👤 **即时私信** | 个人待办提醒 |
 
 #### 4.2.2 配置示例 (`schedule.json`)
 
@@ -391,29 +347,27 @@ Agent 输出 `{"template_card": ...}` 时自动渲染为交互卡片：
         "to": "party:1",      // 一键发送给根部门所有人！
         "text": "🌞 早安！请查收[今日行业简报](https://example.com/daily)。"
       }
-    },
-    {
-      "cron": "0 18 * * 5",
-      "action": "reply.send",
-      "params": {
-        "channel": "wecom",
-        "to": "tag:Ops",       // 仅发送给运维组
-        "text": "🔒 周五封网提醒：请检查服务器状态。"
-      }
     }
   ]
 }
 ```
 
-
+### 4.3 🤖 动态 Agent 扩容引擎
+在《二、配置说明》中讲解的 `dynamicAgents`，除了在运行时把会话隔离，它还在内存里做了一套高吞吐状态写入：
+系统会自动以异步、排队、防冲突的队列，将被激活的动态专用助理自动追加写入底层核心系统配置文件 `openclaw.json` (或相应 yaml) 的 `agents.list` 数组中，这就意味着：这套扩容体系是对上层管理员完全**透明且免运维**的，机器人活了，号也就落盘注册好了。
 
 ---
 
 <a id="sec-7"></a>
 
-## 五、📖 详细行为说明 (Behavior Detail)
+## 五、📖 详细行为说明 & 运行约束
 
-### 5.1 企业微信群聊交付规则
+### 5.1 运行约束原则
+- **协议单工限制**：同一账号下，Bot 只能选择一个主传输协议 `primaryTransport` (`ws` 或 `webhook`) 运作。
+- **帧边界不可打破**：Bot WS 是基于官方微信内部通信协议的扩展，它必须携带并原路奉还对应的 `req_id`。标准化的事件不会替代原始数据帧，业务流始终可访问该原始微信底层框架。
+- **媒体沙盒边界**：不论是 `Webhook`，还是 `WS`，涉及企微媒体加解密的处理绝不再跨界干预业务执行层。由内部服务自动在 Transport / Media Service 网关边界卸载 `aeskey` 解密并转换为统一 OpenClaw 媒体类抛出。
+
+### 5.2 企业微信群聊交付规则
 
 *   **默认 (Bot 回复)**：群聊里 @Bot，默认由 Bot 在群内直接回复（优先文本/图片/Markdown）。
 *   **例外 (文件兜底)**：如果回复内容包含**非图片文件**（如 PDF/Word/表格/压缩包等），由于企微 Bot 接口不支持，插件会自动：
@@ -421,19 +375,23 @@ Agent 输出 `{"template_card": ...}` 时自动渲染为交互卡片：
     2.  无缝切换到 **自建应用 (Agent)** 通道，将文件私信发送给触发者。
 *   **提示**：若未配置 Agent，Bot 会明确提示“需要管理员配置自建应用通道”。
 
-### 5.2 长任务可靠性保障
+### 5.3 长任务可靠性保障
 
 *   **超时熔断**：企业微信限制 Bot 流式回复窗口约为 6 分钟。
-*   **自动接力**：当对话时长接近此阈值时，Monitor 会自动截断 Bot 流，提示 "剩余内容将私信发送"，并立即启动 Agent 通道私信发送完整结果。这彻底解决了长思考任务（如深度推理、代码生成）因超时导致用户收不到结果的问题。
+*   **自动接力**：当对话时长接近此阈值时，Monitor 会自动截断 Bot 流，提示 "剩余内容将私信发送"，并立即启动 Agent 通道私信发送完整结果。
 
-### 5.3 主动发送安全机制
+### 5.4 命令行排障抓包指南
 
-*   **群发保护**：Agent 主动发送接口不再尝试向普通群 `chatid` (wr/wc...) 发消息（该路径常因权限与归属产生的隐蔽错误）。
-*   **引导提示**：系统会明确拦截并通过日志提示中文错误："请使用 Bot 群内交付或改为私信目标（userid/部门/标签）"，帮助管理员快速排查配置。
+利用自带命令直接追溯到新版本的微架构心跳：
+```bash
+openclaw channels status --deep
+```
 
-### 5.4 管理员友好
-
-*   所有兜底逻辑（Fallback）触发时，如果因配置缺失导致失败，Bot 都会给出清晰的**中文提示**，而不是沉默或报代码错误，极大降低了排查难度。
+如果出故障，除了系统根日志外，新版强化了命名空间隔离的抓包日志锚点，你可以直接在日志中过滤检索：
+- `[wecom-runtime]`：插件整体初始化装配线、出入站分检
+- `[wecom-ws]`：专门看 Bot WS 链路是否频繁掉线被踢、握手授权是否有效。
+- `[wecom-http]`：监控与企微云端所有 HTTP 通信（如 Token 刷新、向企微主动抛消息等网络损耗/限流情况）。
+- `[wecom-agent-delivery]`：看自建应用的被动反向代投情况以及群发选型问题。
 
 ---
 
@@ -441,132 +399,48 @@ Agent 输出 `{"template_card": ...}` 时自动渲染为交互卡片：
 
 ## 六、🙋 社区问答 (FAQ)
 
-针对社区反馈的高频问题，我们已在 v2.2.4 版本中全部解决：
+针对社区反馈的高频问题，解答如下：
 
-**Q1: 同时使用 Bot 和 Agent 会导致消息重复吗？**
+**Q1: 能不能同时配置 `bot.ws` 和 `bot.webhook`？**
+> **A:** 完全可以，且强烈推荐一起预置填写。但真正被框架加载用于**接管实时会话流量**的，永远遵循 `bot.primaryTransport` 这个单选项切换开关。
 
-> **A:** 不会。本插件采用“Bot 优先”策略。用户在哪个通道发消息，就从哪个通道回。只有在 Bot 无法处理（如发文件）时才会智能切换到 Agent 通道作为补充。
+**Q2: 为什么不要手写 callback path？**
+> **A:** 因为由于重构后的引擎能承载大量的企业企微号同时并发挂载，所以必须抛弃写死的映射表。运行时已强制执行 `{accountId}` 前置命名空间策略路由分配。强行手写旧路由会被中间件劫并产生警告抛出。
 
-**Q2: 使用内网穿透时，企业微信报错 60020 (IP 不白名单) 怎么办？**
+**Q3: 为什么 `plugins list` 出现重复 `wecom` 报错？**
+> **A:** 一定是因为你既使用了 `npm i @yanhaidao/wecom`，又尝试 clone 代码本地挂载了 `openclaw plugins install -l ./extensions/wecom` 产生了 npm/file 包竞态冲突导致。请进入配置目录显露出的隐藏子目录彻底清除只留其一即可。
 
-> **A:** 新增了 `config.network.egressProxyUrl` 配置。您可以配置一个拥有固定公网 IP 的代理服务器（如 Squid），让插件通过该代理与企微 API 通信，从而绕过动态 IP 限制。
+**Q4: 使用内网穿透时，企业微信报错 60020 (IP 不白名单) 怎么办？**
+> **A:** 请启用配置中的 `config.network.egressProxyUrl` 项。利用具有独立静态外网IP的二级跳板代理（比如 Squid），来穿透这层官方强制保护盾。
 
-**Q3: 原生 Bot 模式支持图片，为什么 Agent 模式不行？**
-
-> **A:** Agent 模式之前确实存在此短板。但在 v2.2.4 中，我们完整实现了 Agent 端的 XML 媒体解析与 `media_id` 下载逻辑，现在 Agent 模式也能完美看图、听语音了。
-
-**Q4: 群里 @机器人 发送文件失败？**
-
-> **A:** 因为企业微信 Bot 接口本身不支持发送非图片文件。我们的解决方案是：自动检测到文件发送需求后，改为通过 Agent 私信该用户发送文件，并在群里给出 "文件已私信发给您" 的提示。
-
-**Q5: 为什么在 Agent 模式下发送文件（如 PDF、Word）给机器人没有反应？**
-
-> **A:** 这是由于企业微信官方接口限制。自建应用（Agent）的消息回调接口仅支持：文本、图片、语音、视频、位置和链接信息。**不支持**通用文件（File）类型的回调，因此插件无法感知您发送的文件。
-
-**Q6: Cronjob 定时任务怎么发给群？**
-
-> **A:** Cronjob 必须走 Agent 通道（Bot 无法主动发消息）。您只需在配置中指定 `to: "party:1"` (部门) 或 `to: "group:wr123..."` (外部群)，即可实现定时推送到群。
-
-**Q7: 为什么发视频给 Bot 没反应？**
-
-> **A:** 官方 Bot 接口**不支持接收视频**。如果您需要处理视频内容，请配置并使用 Agent 模式（Agent 支持接收视频）。
+**Q5: 为什么发视频给 Bot 没反应？**
+> **A:** 官方 Bot 接口**不支持接收视频**。如果您需要处理视频内容，必须配置 Agent 小微应用，由于 Agent 下行具备富媒体流承接功能，本插件会自动从底层拦截将其解码并传输给底层大模型看。
 
 ---
 
 <a id="sec-9"></a>
 
-## 七、📮 联系我
+## 七、📮 联系我 与 版本协议
+
+### v2.3.9 更新日志（2026-03-09）
+
+本次版本重点收敛为“默认更易用、排障更直接、回调更稳定”：
+
+- **默认 Bot WebSocket 引导**：onboarding 默认写入 `bot.ws`，新用户无需域名即可完成机器人接入。
+- **中文化配置体验**：企业微信插件自管账号创建与私聊策略提示，尽量避免流程中重复出现英文术语。
+- **Bot WS 流式输出修复**：长连接模式支持块级流式交付，不再只保留最终结果。
+- **Webhook / Agent 回调稳定性增强**：统一 HTTP 分发链路，并补齐默认账号显式路径，便于 Bot 与 Agent 回调稳定命中。
+- **Agent 排障日志增强**：补充原始 callback、解密摘要、发送请求与响应日志，更容易定位“能接收但不能回复”的问题。
+- **配置收敛**：移除 `bot.enabled` / `agent.enabled` 冗余字段，减少误导。
+
+详细版本记录见 `changelog/v2.3.9.md`。
 
 微信交流群（扫码入群）：
 
-![企业微信交流群](https://openclaw.cc/wechat-openclaw-cn-qr.jpg)
+![企业微信交流群](https://openclaw.cc/wechat-github.jpg)
 
 维护者：YanHaidao（VX：YanHaidao）
 
----
-
-<a id="sec-legal"></a>
-
-## ⚖️ 授权与原创声明
-
 本项目采用 **ISC License** 开源协议，并在此强调以下要求：
-
-1. **保留署名**：根据 ISC 协议，您在任何分发、修改或使用本项目（或其部分逻辑）时，**必须**在显著位置完整保留本项目的版权声明（Copyright Notice）。
-2. **尊重原创**：本项目包含的“Bot/Agent 自动化互补架构”、“长对话超时接力”、“WeCom 全媒体流自动化处理”等核心逻辑均为作者 **YanHaidao** 独立思考与实践的原创成果。
-3. **维权申明**：对于恶意删除署名、像素级抄袭、混淆视听的恶意搬运行为，作者保留在社区公示及通过法律途径维权的权利。
-
----
-
-<a id="sec-10"></a>
-## 八、📝 更新日志
-
-### 2026.3.3（今日更新简报）
-
-- 【SDK适配】♻️ **插件 HTTP 注册升级**：入口改为 `registerHttpRoute`（`/plugins/wecom` + `match=prefix` + `auth=plugin`），适配 OpenClaw 新版插件接口。
-- 【兼容修复】🔁 **旧入口保持可达**：同步注册 `/wecom` 前缀路由，保障历史 Bot/Agent 回调地址继续可用。
-- 【兼容性修复】🧩 **OpenClaw 3.1 路由抢占问题修复**：推荐回调地址升级为 `/plugins/wecom/bot/{accountId}`、`/plugins/wecom/agent/{accountId}`，规避根路径 Control UI fallback 抢占 webhook。
-- 【引导收敛】🧭 **Onboarding 仅支持账号化配置**：配置向导统一写入 `channels.wecom.accounts.<accountId>`，不再引导单账号旧结构。
-- 【兼容策略】🔁 **旧路径兼容保留**：`/wecom/*` 历史回调路径保留兼容能力，但不再作为维护主路径。
-- 【分流稳定性】🧭 **路由识别增强**：monitor 按插件命名空间账号路径识别，确保 Bot/Agent 分支稳定命中。
-- 【链路一致性】🔒 **Bot 回复不再误走 Agent**：修复 Bot 上下文通道标识，避免 `routeReply` 误触发到 outbound 主动发送链路。
-- 【验证结果】✅ WeCom 插件测试通过：`10` files / `41` tests。
-
-### 2026.3.2（版本更新简报）
-
-- 【交付收口】🔄 修复 Bot 会话“正在搜索相关内容”不结束的问题，并在可用时推送最终流帧结束状态。  
-- 【媒体兜底】📎 统一非图片文件、媒体失败和超时场景为“Bot 提示 + Agent 私信兜底”闭环，确保结果可达。  
-- 【类型兼容】🧠 扩展 `txt/docx/xlsx/pptx/csv/zip` 等常见文件类型识别，并保留 `application/octet-stream` 自动重试。  
-- 【工具治理】🛡 修复 Bot 会话 `message` 工具禁用策略，避免绕过 Bot 交付链路导致会话错位。  
-
-### 2026.2.28
-
-- 【重磅更新】🎯 **多账号/多智能体可用性增强**：支持按 `accountId` 做组内隔离（Bot + Agent + 路由绑定同组生效），动态 Agent 与会话键增加 `accountId` 维度，避免跨账号串会话。
-- 【稳定性】🔁 **生命周期兼容修复**：适配新版 OpenClaw Gateway 生命周期，`startAccount` 改为长生命周期运行，修复“几秒一次重启 + health-monitor 二次重启”的循环问题。
-- 【准确性】🔐 **XML 字段保真修复**：Agent XML 解析关闭自动数值化，保留 `FromUserName` 前导 `0`，并避免 `MsgId`（64 位）精度风险，确保会话与回复目标不被误改。
-- 【准确性】🧹 **误回复修复**：Bot/Agent 入站都增加事件过滤，`event`、`sys`、缺失发送者（以及群聊缺失 `chatid`）不再进入 AI 会话，避免“一个消息触发多人误回复”。
-- 【可控性】🧱 **配置安全护栏**：新增多账号冲突检测，自动拦截重复 `bot.token`、重复 `bot.aibotid`、重复 `agent(corpId+agentId)` 的配置并给出明确错误提示。
-- 【可控性】🛠 **账号管理修复**：`deleteAccount` 改为仅删除目标账号，不再误删整个 `channels.wecom`。
-- 【易用性】📘 **文档默认路径调整**：README 快速开始与配置说明改为优先展示“多账号 + 多 Agent”矩阵配置；单账号模式保留为兼容方案。
-- 【质量保障】✅ **回归保护**：新增账号解析、冲突检测、动态路由隔离、生命周期与入站过滤测试。
-
-### 2026.2.7
-
-- ✨ **动态 Agent 路由**：新增按用户/群组隔离的动态路由功能，支持为每个对话主体自动分配独立的 Agent 实例（如 `wecom-dm-xxx`）。
-- 🛠 **自动注册机制**：动态生成的 Agent 会自动异步注册到 `agents.list` 配置中，实现多租户 Agent 的无感扩容与管理。
-- 🛡 **权限与兼容性**：支持 `adminUsers` 白名单绕过机制以使用主 Agent；功能默认关闭，确保对现有配置完全兼容。
-- ⚙️ **精细化配置**：新增 `channels.wecom.dynamicAgents` 配置项，可独立控制私聊和群聊的动态路由行为。
-- 🙏 **特别致谢**：感谢 [WhyMeta](https://github.com/WhyMeta) 开发者对动态路由实施方案的贡献。
-
-### 2026.2.5
-
-- 🛠 **体验优化**：WeCom 媒体（图片/语音/视频/文件）处理的默认大小上限提升到 25MB，减少大文件因超限导致的“下载/保存失败”。
-- 📌 **可配置提示**：若仍遇到 Media exceeds ... limit，日志/回复会提示通过 channels.wecom.media.maxBytes 调整上限，并给出可直接执行的 openclaw config set 示例命令。
-
-### 2026.2.4
-
-- 🚀 **架构升级**：实施 "Bot 优先 + Agent 兜底" 策略，兼顾流式体验与长任务稳定性（6分钟切换）。
-- ✨ **全模态支持**：Agent 模式完整支持接收图片/语音/视频（文件仅支持发送）。
-- ✨ **Cronjob 增强**：支持向部门 (`party:ID`) 和标签 (`tag:ID`) 广播消息。
-- 🛠 **Monitor 重构**：统一的消息防抖与流状态管理，提升并发稳定性。
-- 🛠 **体验优化**：修复企微重试导致的重复回复（Bot/Agent 均做 `msgid` 去重）；优化 Bot 连续多条消息的排队/合并回执，避免“重复同一答案”或“消息失败提示”。
-- 🐞 **修复**：Outbound ID 解析逻辑及 API 客户端参数缺失问题。
-
-### 2026.2.3
-
-- 🎉 **重大更新**：新增 Agent 模式（自建应用）支持
-- ✨ 双模式并行：Bot + Agent 可同时运行
-- ✨ **多模态支持**：Agent 模式支持图片/语音/文件/视频的接收与自动下载
-- ✨ AccessToken 自动管理：缓存 + 智能刷新
-- ✨ Agent 主动推送：脱离回调限制
-- ✨ XML 加解密：完整 Agent 回调支持
-- 📁 代码重构：模块化解耦设计
-
-### 2026.1.31
-
-- 文档：补充入模与测试截图说明
-- 新增文件支持
-- 新增卡片支持
-
-### 2026.1.30
-
-- 项目更名：Clawdbot → OpenClaw
+1. **保留署名**：在任何分发、修改或使用本项目时，**必须**完整保留本项目的版权声明。
+2. **尊重原创**：本项目包含的“架构”“长对话超时接力”等均为作者 **YanHaidao** 核心成果，拒绝任何去署名的“纯搬运”剽窃。

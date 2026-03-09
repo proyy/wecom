@@ -89,7 +89,7 @@ function createCtx(params: {
   };
 }
 
-function createLegacyBotConfig(params: {
+function createWebhookBotConfig(params: {
   token: string;
   encodingAESKey: string;
   receiveId?: string;
@@ -99,9 +99,12 @@ function createLegacyBotConfig(params: {
       wecom: {
         enabled: true,
         bot: {
-          token: params.token,
-          encodingAESKey: params.encodingAESKey,
-          receiveId: params.receiveId ?? "",
+          primaryTransport: "webhook",
+          webhook: {
+            token: params.token,
+            encodingAESKey: params.encodingAESKey,
+            receiveId: params.receiveId ?? "",
+          },
         },
       },
     },
@@ -148,7 +151,7 @@ describe("wecomPlugin gateway lifecycle", () => {
   it("keeps startAccount pending until abort signal", async () => {
     const token = "token";
     const encodingAESKey = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
-    const cfg = createLegacyBotConfig({ token, encodingAESKey });
+    const cfg = createWebhookBotConfig({ token, encodingAESKey });
     const abortController = new AbortController();
     const ctx = createCtx({ cfg, abortController });
 
@@ -171,7 +174,7 @@ describe("wecomPlugin gateway lifecycle", () => {
     const token = "token";
     const encodingAESKey = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
     const receiveId = "";
-    const cfg = createLegacyBotConfig({ token, encodingAESKey, receiveId });
+    const cfg = createWebhookBotConfig({ token, encodingAESKey, receiveId });
     const abortController = new AbortController();
     const ctx = createCtx({ cfg, abortController });
 

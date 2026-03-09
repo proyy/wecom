@@ -1,25 +1,9 @@
 import type { OpenClawConfig, PluginRuntime } from "openclaw/plugin-sdk";
 
 import type { WecomAgentConfig, WecomBotConfig } from "../types/index.js";
+import { isWecomSenderAllowed, normalizeWecomAllowFromEntry } from "../domain/policies.js";
 
 type WecomCommandAuthAccountConfig = Pick<WecomBotConfig, "dm"> | Pick<WecomAgentConfig, "dm">;
-
-function normalizeWecomAllowFromEntry(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
-    .replace(/^wecom:/, "")
-    .replace(/^user:/, "")
-    .replace(/^userid:/, "");
-}
-
-function isWecomSenderAllowed(senderUserId: string, allowFrom: string[]): boolean {
-  const list = allowFrom.map((entry) => normalizeWecomAllowFromEntry(entry)).filter(Boolean);
-  if (list.includes("*")) return true;
-  const normalizedSender = normalizeWecomAllowFromEntry(senderUserId);
-  if (!normalizedSender) return false;
-  return list.includes(normalizedSender);
-}
 
 export async function resolveWecomCommandAuthorization(params: {
   core: PluginRuntime;

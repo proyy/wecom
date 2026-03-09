@@ -18,6 +18,7 @@ openclaw config set channels.wecom.enabled true
 openclaw config set channels.wecom.bot.token "YOUR_BOT_TOKEN"
 openclaw config set channels.wecom.bot.encodingAESKey "YOUR_BOT_AES_KEY"
 openclaw config set channels.wecom.bot.receiveId ""
+openclaw config set channels.wecom.bot.primaryTransport "webhook"
 openclaw config set channels.wecom.bot.streamPlaceholderContent "正在思考..."
 openclaw config set channels.wecom.bot.welcomeText "你好！我是 AI 助手"
 
@@ -108,8 +109,37 @@ openclaw channels status
 
 ## A.4 Webhook 路径
 
-- Bot: `/wecom`（默认）或 `/wecom/bot`
-- Agent: `/wecom/agent`
+- Bot Webhook: `/plugins/wecom/bot`（推荐），兼容 `/wecom/bot`、`/wecom`
+- Agent Callback: `/plugins/wecom/agent`（推荐），兼容 `/wecom/agent`
+
+说明：
+
+- 路径由系统派生，不建议额外维护自定义 path。
+- 如果 Bot 主 transport 改成 `ws`，则 Bot 不再依赖 HTTP callback，但 Agent Callback 仍可保留。
+
+## A.4.1 Bot WS 单账号示例
+
+```bash
+openclaw config set channels.wecom.bot.primaryTransport "ws"
+openclaw config set channels.wecom.bot.ws.botId "YOUR_BOT_ID"
+openclaw config set channels.wecom.bot.ws.secret "YOUR_BOT_SECRET"
+```
+
+运维检查：
+
+```bash
+openclaw channels status --deep
+```
+
+重点看：
+
+- `primaryTransport`
+- `transport`
+- `health`
+- `ownerId`
+- `lastError`
+- `lastInboundAt`
+- `lastOutboundAt`
 
 ## A.5 迁移建议
 

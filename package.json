@@ -1,8 +1,8 @@
 {
   "name": "@yanhaidao/wecom",
-  "version": "2.3.4",
+  "version": "2.3.9",
   "type": "module",
-  "description": "OpenClaw WeCom (WeChat Work) intelligent bot channel plugin",
+  "description": "OpenClaw 企业微信（WeCom）插件，默认 Bot WebSocket，支持 Agent 主动发消息与多账号接入",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/YanHaidao/wecom.git"
@@ -18,12 +18,12 @@
     ],
     "channel": {
       "id": "wecom",
-      "label": "WeCom",
-      "selectionLabel": "WeCom (plugin)",
-      "detailLabel": "WeCom Bot",
+      "label": "WeCom (企业微信)",
+      "selectionLabel": "WeCom (企业微信)",
+      "detailLabel": "WeCom (企业微信)",
       "docsPath": "/channels/wecom",
-      "docsLabel": "wecom",
-      "blurb": "Enterprise WeCom intelligent bot (API mode) via encrypted webhooks + passive replies.",
+      "docsLabel": "企业微信",
+      "blurb": "企业微信官方推荐三方插件，默认 Bot WS 配置简单，支持主动发消息与 Agent 全能力。",
       "aliases": [
         "wechatwork",
         "wework",
@@ -40,6 +40,7 @@
     }
   },
   "dependencies": {
+    "@wecom/aibot-node-sdk": "^1.0.0",
     "fast-xml-parser": "5.3.4",
     "undici": "^7.20.0",
     "zod": "^4.3.6"

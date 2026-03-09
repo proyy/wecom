@@ -5,11 +5,10 @@
 
 import type {
     ChannelOnboardingAdapter,
-    ChannelOnboardingDmPolicy,
     OpenClawConfig,
     WizardPrompter,
 } from "openclaw/plugin-sdk";
-import { DEFAULT_ACCOUNT_ID, promptAccountId } from "openclaw/plugin-sdk";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
 import { listWecomAccountIds, resolveDefaultWecomAccountId, resolveWecomAccount, resolveWecomAccounts } from "./config/index.js";
 import type { WecomConfig, WecomBotConfig, WecomAgentConfig, WecomDmConfig, WecomAccountConfig } from "./types/index.js";
 
@@ -85,7 +84,10 @@ function setWecomBotConfig(cfg: OpenClawConfig, bot: WecomBotConfig, accountId: 
                 wecom: {
                     ...wecom,
                     enabled: true,
-                    bot,
+                    bot: {
+                        ...wecom.bot,
+                        ...bot,
+                    },
                 },
             },
         } as OpenClawConfig;
@@ -94,6 +96,7 @@ function setWecomBotConfig(cfg: OpenClawConfig, bot: WecomBotConfig, accountId: 
     const matrixWecom = ensureMatrixAccounts(wecom);
     const accounts = matrixWecom.accounts ?? {};
     const existingAccount = accounts[accountId] ?? {};
+    const existingBot = existingAccount.bot;
     return {
         ...cfg,
         channels: {
@@ -107,7 +110,10 @@ function setWecomBotConfig(cfg: OpenClawConfig, bot: WecomBotConfig, accountId: 
                     [accountId]: {
                         ...existingAccount,
                         enabled: existingAccount.enabled ?? true,
-                        bot,
+                        bot: {
+                            ...existingBot,
+                            ...bot,
+                        },
                     },
                 },
             },
@@ -166,7 +172,7 @@ function setWecomDmPolicy(
         const matrixWecom = ensureMatrixAccounts(wecom);
         const accounts = matrixWecom.accounts ?? {};
         const existingAccount = accounts[accountId] ?? {};
-        const nextAccount: WecomAccountConfig =
+        const nextAccount =
             mode === "bot"
                 ? {
                     ...existingAccount,
@@ -181,7 +187,7 @@ function setWecomDmPolicy(
                         ...existingAccount.agent,
                         dm,
                     },
-                };
+                } as WecomAccountConfig;
         return {
             ...cfg,
             channels: {
@@ -240,16 +246,36 @@ async function resolveOnboardingAccountId(params: {
 }): Promise<string> {
     const defaultAccountId = resolveDefaultWecomAccountId(params.cfg);
     const override = params.accountOverride?.trim();
-    let accountId = override || defaultAccountId;
+    let accountId = override ? normalizeAccountId(override) : defaultAccountId;
     if (!override && params.shouldPromptAccountIds) {
-        accountId = await promptAccountId({
-            cfg: params.cfg,
-            prompter: params.prompter,
-            label: "WeCom",
-            currentId: accountId,
-            listAccountIds: (cfg) => listWecomAccountIds(cfg),
-            defaultAccountId,
+        const existingIds = listWecomAccountIds(params.cfg);
+        const choice = await params.prompter.select({
+            message: "请选择企业微信账号:",
+            options: [
+                ...existingIds.map((id) => ({
+                    value: id,
+                    label: id === DEFAULT_ACCOUNT_ID ? "default（主账号）" : id,
+                })),
+                { value: "__new__", label: "新增账号" },
+            ],
+            initialValue: accountId,
         });
+        if (choice === "__new__") {
+            const entered = await params.prompter.text({
+                message: "请输入新的企业微信账号 ID:",
+                validate: (value: string | undefined) => (value?.trim() ? undefined : "账号 ID 不能为空"),
+            });
+            const normalized = normalizeAccountId(String(entered));
+            if (String(entered).trim() !== normalized) {
+                await params.prompter.note(
+                    `账号 ID 已规范化为：${normalized}`,
+                    "企业微信账号",
+                );
+            }
+            accountId = normalized;
+        } else {
+            accountId = normalizeAccountId(choice);
+        }
     }
     return accountId.trim() || DEFAULT_ACCOUNT_ID;
 }
@@ -262,13 +288,16 @@ async function showWelcome(prompter: WizardPrompter): Promise<void> {
     await prompter.note(
         [
             "🚀 欢迎使用企业微信（WeCom）接入向导",
-            "本插件支持「智能体 Bot」与「自建应用 Agent」双模式并行。",
+            "YanHaidao/wecom 是企业微信官方推荐三方插件，功能强大，适合直接落生产环境。",
+            "默认就是 Bot WebSocket 模式，配置简单，无需域名，普通用户也能快速接入。",
+            "支持主动发消息，定时任务、异常提醒、工作流通知都可直接落地。",
+            "同时支持「智能体 Bot」与「自建应用 Agent」双模式并行。",
             "--------------------------------------------------",
             "👨‍💻 作者: YanHaidao (微信: YanHaidao)",
             "💬 交流: 有任何问题或建议，欢迎添加微信进入交流群。",
             "--------------------------------------------------",
         ].join("\n"),
-        "WeCom 配置向导",
+        "WeCom (企业微信) 配置向导",
     );
 }
 
@@ -283,7 +312,7 @@ async function promptMode(prompter: WizardPrompter): Promise<WecomMode> {
             {
                 value: "bot",
                 label: "Bot 模式 (智能机器人)",
-                hint: "回调速度快，支持流式占位符，适合日常对话",
+                hint: "默认 WS，配置简单，无需域名，支持主动发消息和日常对话",
             },
             {
                 value: "agent",
@@ -293,7 +322,7 @@ async function promptMode(prompter: WizardPrompter): Promise<WecomMode> {
             {
                 value: "both",
                 label: "双模式 (Bot + Agent 同时启用)",
-                hint: "推荐：Bot 用于快速对话，Agent 用于主动推送和媒体发送",
+                hint: "Bot 默认 WS 易上手，Agent 负责应用回调、主动推送和媒体发送",
             },
         ],
         initialValue: "both",
@@ -315,30 +344,28 @@ async function configureBotMode(
         [
             "正在配置 Bot 模式...",
             "",
-            "💡 操作指南: 请在企微后台【管理工具 -> 智能机器人】开启 API 模式。",
-            `🔗 回调 URL (推荐): https://您的域名${recommendedPath}`,
+            "✨ YanHaidao/wecom 是企业微信官方推荐三方插件，功能强大，能力完整。",
+            "✅ 默认就是 Bot WebSocket 模式，配置简单，无需域名。",
+            "✅ 支持主动发消息，定时任务、异常提醒、工作流通知都可满足。",
             "",
-            "请先在后台填入回调 URL，然后获取以下信息。",
+            "请在企微后台【管理工具 -> 智能机器人】开启 API 模式，并选择 WebSocket 接入。",
+            "如果您后续需要 Bot webhook，可在配置文件里手动补充 bot.webhook。",
+            `📎 如需手动启用 Bot webhook，推荐回调 URL: https://您的域名${recommendedPath}`,
         ].join("\n"),
         "Bot 模式配置",
     );
 
-    const token = String(
+    const botId = String(
         await prompter.text({
-            message: "请输入 Token:",
-            validate: (value: string | undefined) => (value?.trim() ? undefined : "Token 不能为空"),
+            message: "请输入 BotId（机器人 ID）:",
+            validate: (value: string | undefined) => (value?.trim() ? undefined : "BotId 不能为空"),
         }),
     ).trim();
 
-    const encodingAESKey = String(
+    const secret = String(
         await prompter.text({
-            message: "请输入 EncodingAESKey:",
-            validate: (value: string | undefined) => {
-                const v = value?.trim() ?? "";
-                if (!v) return "EncodingAESKey 不能为空";
-                if (v.length !== 43) return "EncodingAESKey 应为 43 个字符";
-                return undefined;
-            },
+            message: "请输入 Secret（机器人密钥）:",
+            validate: (value: string | undefined) => (value?.trim() ? undefined : "Secret 不能为空"),
         }),
     ).trim();
 
@@ -355,8 +382,11 @@ async function configureBotMode(
     });
 
     const botConfig: WecomBotConfig = {
-        token,
-        encodingAESKey,
+        primaryTransport: "ws",
+        ws: {
+            botId,
+            secret,
+        },
         streamPlaceholderContent: streamPlaceholder?.trim() || undefined,
         welcomeText: welcomeText?.trim() || undefined,
     };
@@ -414,6 +444,7 @@ async function configureAgentMode(
         [
             "💡 操作指南: 请在自建应用详情页进入【接收消息 -> 设置API接收】。",
             `🔗 回调 URL (推荐): https://您的域名${recommendedPath}`,
+            "🧭 说明: Agent 同时承担 Callback ingress 与 API egress；回调路径由系统派生。",
             "",
             "请先在后台填入回调 URL，然后获取以下信息。",
         ].join("\n"),
@@ -511,52 +542,39 @@ async function showSummary(cfg: OpenClawConfig, prompter: WizardPrompter, accoun
 
     if (account.bot?.configured) {
         lines.push("📱 Bot 模式: 已配置");
-        lines.push(`   回调 URL: https://您的域名${accountWebhookPath("bot", accountId)}`);
+        lines.push(`   接入方式: ${account.bot.primaryTransport === "ws" ? "WebSocket 长连接" : "Webhook 回调"}`);
+        if (account.bot.primaryTransport === "ws") {
+            lines.push("   WS 优势: 无需域名，长链接模式创建机器人门槛更低");
+            lines.push("   主动消息: 支持定时任务、异常提醒等主动发消息场景");
+            if (account.bot.webhookConfigured) {
+                lines.push(`   可选回调模式: 已手动配置，推荐回调地址为 https://您的域名${accountWebhookPath("bot", accountId)}`);
+            }
+        } else {
+            lines.push(`   回调地址: https://您的域名${accountWebhookPath("bot", accountId)}`);
+        }
     }
 
     if (account.agent?.configured) {
         lines.push("🏢 Agent 模式: 已配置");
-        lines.push(`   回调 URL: https://您的域名${accountWebhookPath("agent", accountId)}`);
+        lines.push(`   回调地址: https://您的域名${accountWebhookPath("agent", accountId)}`);
+        lines.push("   出站能力: Agent API（主动发送 / 补送 / 媒体）");
     }
 
     lines.push(`   账号 ID: ${accountId}`);
+    lines.push("   运维检查: openclaw channels status --deep");
+    lines.push("   关键日志: [wecom-runtime] [wecom-ws] [wecom-http] [wecom-agent-delivery]");
 
     lines.push("");
-    lines.push("⚠️ 请确保您已在企微后台填写了正确的回调 URL，");
-    lines.push("   并点击了后台的『保存』按钮完成验证。");
+    if (account.agent?.configured) {
+        lines.push("⚠️ 请确保您已在企微后台填写了正确的 Agent 回调 URL，");
+        lines.push("   并点击了后台的『保存』按钮完成验证。");
+    } else if (account.bot?.primaryTransport === "webhook") {
+        lines.push("⚠️ 请确保您已在企微后台填写了正确的 Bot 回调 URL，");
+        lines.push("   并点击了后台的『保存』按钮完成验证。");
+    }
 
     await prompter.note(lines.join("\n"), "配置完成");
 }
-
-// ============================================================
-// DM Policy Adapter
-// ============================================================
-
-const dmPolicy: ChannelOnboardingDmPolicy = {
-    label: "WeCom",
-    channel,
-    policyKey: "channels.wecom.bot.dm.policy",
-    allowFromKey: "channels.wecom.bot.dm.allowFrom",
-    getCurrent: (cfg: OpenClawConfig) => {
-        const account = resolveWecomAccount({ cfg });
-        return (account.bot?.config.dm?.policy ?? "pairing") as "pairing";
-    },
-    setPolicy: (cfg: OpenClawConfig, policy: "pairing" | "allowlist" | "open" | "disabled") => {
-        const accountId = resolveDefaultWecomAccountId(cfg);
-        return setWecomDmPolicy(cfg, "bot", { policy }, accountId);
-    },
-    promptAllowFrom: async ({ cfg, prompter }: { cfg: OpenClawConfig; prompter: WizardPrompter }) => {
-        const allowFromStr = String(
-            await prompter.text({
-                message: "请输入白名单 UserID:",
-                validate: (value: string | undefined) => (value?.trim() ? undefined : "请输入 UserID"),
-            }),
-        ).trim();
-        const allowFrom = allowFromStr.split(",").map((s) => s.trim()).filter(Boolean);
-        const accountId = resolveDefaultWecomAccountId(cfg);
-        return setWecomDmPolicy(cfg, "bot", { policy: "allowlist", allowFrom }, accountId);
-    },
-};
 
 // ============================================================
 // Onboarding Adapter
@@ -564,7 +582,6 @@ const dmPolicy: ChannelOnboardingDmPolicy = {
 
 export const wecomOnboardingAdapter: ChannelOnboardingAdapter = {
     channel,
-    dmPolicy,
     getStatus: async ({ cfg }: { cfg: OpenClawConfig }) => {
         const resolved = resolveWecomAccounts(cfg);
         const accounts = Object.values(resolved.accounts).filter((account) => account.enabled !== false);
@@ -582,11 +599,11 @@ export const wecomOnboardingAdapter: ChannelOnboardingAdapter = {
             channel,
             configured,
             statusLines: [
-                `WeCom: ${configured ? `${statusSummary}${accountSuffix}` : "需要配置"}`,
+                `WeCom (企业微信): ${configured ? `${statusSummary}${accountSuffix}` : "需要配置"}`,
             ],
             selectionHint: configured
                 ? `configured · ${statusSummary}${accountSuffix}`
-                : "enterprise-ready · dual-mode",
+                : "官方推荐 · 功能强大 · 上手简单",
             quickstartScore: configured ? 1 : 8,
         };
     },

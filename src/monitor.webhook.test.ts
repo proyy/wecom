@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 
-import type { ResolvedWecomAccount } from "./types/index.js";
+import type { ResolvedBotAccount } from "./types/index.js";
 import { computeWecomMsgSignature, decryptWecomEncrypted, encryptWecomPlaintext } from "./crypto.js";
 import { handleWecomWebhookRequest, registerAgentWebhookTarget, registerWecomWebhookTarget } from "./monitor.js";
 
@@ -50,21 +50,51 @@ function createMockResponse(): ServerResponse & {
   return res as any;
 }
 
+function createBotAccount(params: {
+  accountId?: string;
+  token: string;
+  encodingAESKey: string;
+  receiveId?: string;
+  streamPlaceholderContent?: string;
+  aibotid?: string;
+}): ResolvedBotAccount {
+  return {
+    accountId: params.accountId ?? "default",
+    configured: true,
+    primaryTransport: "webhook",
+    wsConfigured: false,
+    webhookConfigured: true,
+    config: {
+      streamPlaceholderContent: params.streamPlaceholderContent,
+      aibotid: params.aibotid,
+      webhook: {
+        token: params.token,
+        encodingAESKey: params.encodingAESKey,
+        receiveId: params.receiveId ?? "",
+      },
+    },
+    token: params.token,
+    encodingAESKey: params.encodingAESKey,
+    receiveId: params.receiveId ?? "",
+    botId: "",
+    secret: "",
+    webhook: {
+      token: params.token,
+      encodingAESKey: params.encodingAESKey,
+      receiveId: params.receiveId ?? "",
+    },
+  };
+}
+
 describe("handleWecomWebhookRequest", () => {
   const token = "test-token";
   const encodingAESKey = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
 
   it("handles GET url verification", async () => {
-    const account: ResolvedWecomAccount = {
-      accountId: "default",
-      name: "Test",
-      enabled: true,
-      configured: true,
+    const account = createBotAccount({
       token,
       encodingAESKey,
-      receiveId: "",
-      config: { webhookPath: "/hook", token, encodingAESKey },
-    };
+    });
 
     const unregister = registerWecomWebhookTarget({
       account,
@@ -98,16 +128,10 @@ describe("handleWecomWebhookRequest", () => {
   });
 
   it("handles POST callback and returns encrypted stream placeholder", async () => {
-    const account: ResolvedWecomAccount = {
-      accountId: "default",
-      name: "Test",
-      enabled: true,
-      configured: true,
+    const account = createBotAccount({
       token,
       encodingAESKey,
-      receiveId: "",
-      config: { webhookPath: "/hook", token, encodingAESKey },
-    };
+    });
 
     const unregister = registerWecomWebhookTarget({
       account,
@@ -173,16 +197,11 @@ describe("handleWecomWebhookRequest", () => {
   });
 
   it("supports custom streamPlaceholderContent", async () => {
-    const account: ResolvedWecomAccount = {
-      accountId: "default",
-      name: "Test",
-      enabled: true,
-      configured: true,
+    const account = createBotAccount({
       token,
       encodingAESKey,
-      receiveId: "",
-      config: { webhookPath: "/hook", token, encodingAESKey, streamPlaceholderContent: "正在思考..." },
-    };
+      streamPlaceholderContent: "正在思考...",
+    });
 
     const unregister = registerWecomWebhookTarget({
       account,
@@ -233,16 +252,10 @@ describe("handleWecomWebhookRequest", () => {
   });
 
   it("skips bot callbacks with missing sender and returns empty ack", async () => {
-    const account: ResolvedWecomAccount = {
-      accountId: "default",
-      name: "Test",
-      enabled: true,
-      configured: true,
+    const account = createBotAccount({
       token,
       encodingAESKey,
-      receiveId: "",
-      config: { webhookPath: "/hook", token, encodingAESKey },
-    };
+    });
 
     const unregister = registerWecomWebhookTarget({
       account,
@@ -292,7 +305,6 @@ describe("handleWecomWebhookRequest", () => {
     const encodingAESKey = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
     const account: any = {
       accountId: "default",
-      enabled: true,
       configured: true,
       token,
       encodingAESKey,
@@ -376,7 +388,6 @@ describe("handleWecomWebhookRequest", () => {
     const unregisterA = registerWecomWebhookTarget({
       account: {
         accountId: "acct-a",
-        enabled: true,
         configured: true,
         token,
         encodingAESKey,
@@ -395,7 +406,6 @@ describe("handleWecomWebhookRequest", () => {
     const unregisterB = registerWecomWebhookTarget({
       account: {
         accountId: "acct-b",
-        enabled: true,
         configured: true,
         token,
         encodingAESKey,
@@ -457,7 +467,6 @@ describe("handleWecomWebhookRequest", () => {
     const unregisterA = registerWecomWebhookTarget({
       account: {
         accountId: "acct-a",
-        enabled: true,
         configured: true,
         token,
         encodingAESKey,
@@ -476,7 +485,6 @@ describe("handleWecomWebhookRequest", () => {
     const unregisterB = registerWecomWebhookTarget({
       account: {
         accountId: "acct-b",
-        enabled: true,
         configured: true,
         token,
         encodingAESKey,
@@ -531,13 +539,47 @@ describe("handleWecomWebhookRequest", () => {
     }
   });
 
+  it("handles default explicit bot path through the shared router only", async () => {
+    const unregisterTarget = registerWecomWebhookTarget({
+      account: createBotAccount({
+        token,
+        encodingAESKey,
+      }),
+      config: {} as OpenClawConfig,
+      runtime: {},
+      core: {} as any,
+      path: "/plugins/wecom/bot/default",
+    });
+
+    try {
+      const timestamp = "1700001002";
+      const nonce = "nonce-default-route";
+      const echostr = encryptWecomPlaintext({
+        encodingAESKey,
+        receiveId: "",
+        plaintext: "ping",
+      });
+      const msg_signature = computeWecomMsgSignature({ token, timestamp, nonce, encrypt: echostr });
+      const req = createMockRequest({
+        method: "GET",
+        url: `/plugins/wecom/bot/default?msg_signature=${encodeURIComponent(msg_signature)}&timestamp=${encodeURIComponent(timestamp)}&nonce=${encodeURIComponent(nonce)}&echostr=${encodeURIComponent(echostr)}`,
+      });
+      const res = createMockResponse();
+      const handled = await handleWecomWebhookRequest(req, res);
+      expect(handled).toBe(true);
+      expect(res._getStatusCode()).toBe(200);
+      expect(res._getData()).toBe("ping");
+    } finally {
+      unregisterTarget();
+    }
+  });
+
   it("does not reject when aibotid mismatches configured value", async () => {
     const token = "MATRIX-TOKEN-2";
     const encodingAESKey = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
     const unregister = registerWecomWebhookTarget({
       account: {
         accountId: "acct-a",
-        enabled: true,
         configured: true,
         token,
         encodingAESKey,
@@ -588,7 +630,6 @@ describe("handleWecomWebhookRequest", () => {
     const unregister = registerWecomWebhookTarget({
       account: {
         accountId: "acct-a",
-        enabled: true,
         configured: true,
         token,
         encodingAESKey,
@@ -639,7 +680,6 @@ describe("handleWecomWebhookRequest", () => {
     const unregisterA = registerAgentWebhookTarget({
       agent: {
         accountId: "agent-a",
-        enabled: true,
         configured: true,
         corpId: "corp-a",
         corpSecret: "secret-a",
@@ -655,7 +695,6 @@ describe("handleWecomWebhookRequest", () => {
     const unregisterB = registerAgentWebhookTarget({
       agent: {
         accountId: "agent-b",
-        enabled: true,
         configured: true,
         corpId: "corp-b",
         corpSecret: "secret-b",
@@ -684,6 +723,52 @@ describe("handleWecomWebhookRequest", () => {
     } finally {
       unregisterA();
       unregisterB();
+    }
+  });
+
+  it("accepts default agent verification on /wecom/agent/default", async () => {
+    const token = "AGENT-TOKEN-DEFAULT";
+    const encodingAESKey = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
+    const corpId = "corp-default";
+    const timestamp = "1700002002";
+    const nonce = "nonce-agent-default";
+    const echostr = encryptWecomPlaintext({
+      encodingAESKey,
+      receiveId: corpId,
+      plaintext: "echo-agent-default",
+    });
+    const signature = computeWecomMsgSignature({ token, timestamp, nonce, encrypt: echostr });
+
+    const unregister = registerAgentWebhookTarget({
+      agent: {
+        accountId: "default",
+        configured: true,
+        callbackConfigured: true,
+        apiConfigured: true,
+        corpId,
+        corpSecret: "secret-default",
+        agentId: 1001,
+        token,
+        encodingAESKey,
+        config: {} as any,
+      },
+      config: { channels: { wecom: {} } } as OpenClawConfig,
+      runtimeEnv: {},
+      path: "/wecom/agent/default",
+    });
+
+    try {
+      const req = createMockRequest({
+        method: "GET",
+        url: `/wecom/agent/default?msg_signature=${encodeURIComponent(signature)}&timestamp=${encodeURIComponent(timestamp)}&nonce=${encodeURIComponent(nonce)}&echostr=${encodeURIComponent(echostr)}`,
+      });
+      const res = createMockResponse();
+      const handled = await handleWecomWebhookRequest(req, res);
+      expect(handled).toBe(true);
+      expect(res._getStatusCode()).toBe(200);
+      expect(res._getData()).toBe("echo-agent-default");
+    } finally {
+      unregister();
     }
   });
 });

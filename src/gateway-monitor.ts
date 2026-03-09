@@ -1,18 +1,20 @@
 import type {
   ChannelGatewayContext,
   OpenClawConfig,
-  PluginRuntime,
 } from "openclaw/plugin-sdk";
 
 import {
-  detectMode,
   listWecomAccountIds,
+  resolveDerivedPathSummary,
   resolveWecomAccount,
   resolveWecomAccountConflict,
 } from "./config/index.js";
-import { registerAgentWebhookTarget, registerWecomWebhookTarget } from "./monitor.js";
+import { createAccountRuntime } from "./app/bootstrap.js";
+import { registerAccountRuntime, unregisterAccountRuntime } from "./app/index.js";
 import type { ResolvedWecomAccount, WecomConfig } from "./types/index.js";
-import { WEBHOOK_PATHS } from "./types/constants.js";
+import { WecomBotCapabilityService } from "./capability/bot/index.js";
+import { WecomAgentIngressService } from "./capability/agent/index.js";
+import type { WecomRuntimeEnv } from "./types/runtime-context.js";
 
 type AccountRouteRegistryItem = {
   botPaths: string[];
@@ -75,30 +77,6 @@ function waitForAbortSignal(abortSignal: AbortSignal): Promise<void> {
   });
 }
 
-function uniquePaths(paths: string[]): string[] {
-  return Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
-}
-
-function resolveBotRegistrationPaths(params: { accountId: string; matrixMode: boolean }): string[] {
-  if (params.matrixMode) {
-    return uniquePaths([
-      `${WEBHOOK_PATHS.BOT_PLUGIN}/${params.accountId}`,
-      `${WEBHOOK_PATHS.BOT_ALT}/${params.accountId}`,
-    ]);
-  }
-  return uniquePaths([WEBHOOK_PATHS.BOT_PLUGIN, WEBHOOK_PATHS.BOT, WEBHOOK_PATHS.BOT_ALT]);
-}
-
-function resolveAgentRegistrationPaths(params: { accountId: string; matrixMode: boolean }): string[] {
-  if (params.matrixMode) {
-    return uniquePaths([
-      `${WEBHOOK_PATHS.AGENT_PLUGIN}/${params.accountId}`,
-      `${WEBHOOK_PATHS.AGENT}/${params.accountId}`,
-    ]);
-  }
-  return uniquePaths([WEBHOOK_PATHS.AGENT_PLUGIN, WEBHOOK_PATHS.AGENT]);
-}
-
 /**
  * Keeps WeCom webhook targets registered for the account lifecycle.
  * The promise only settles after gateway abort/reload signals shutdown.
@@ -122,28 +100,10 @@ export async function monitorWecomProvider(
     });
     throw new Error(conflict.message);
   }
-  const mode = detectMode(cfg.channels?.wecom as WecomConfig | undefined);
-  const matrixMode = mode === "matrix";
   const bot = account.bot;
   const agent = account.agent;
   const botConfigured = Boolean(bot?.configured);
   const agentConfigured = Boolean(agent?.configured);
-
-  if (mode === "legacy" && (botConfigured || agentConfigured)) {
-    if (agentConfigured && !botConfigured) {
-      ctx.log?.warn(
-        `[${account.accountId}] 检测到仍在使用单 Agent 兼容模式。建议尽快升级为多账号模式：` +
-        `将 channels.wecom.agent 迁移到 channels.wecom.accounts.<accountId>.agent，` +
-        `并设置 channels.wecom.defaultAccount。`,
-      );
-    } else {
-      ctx.log?.warn(
-        `[${account.accountId}] 检测到仍在使用单账号兼容模式。建议尽快升级为多账号模式：` +
-        `将 channels.wecom.bot/agent 迁移到 channels.wecom.accounts.<accountId>.bot/agent，` +
-        `并设置 channels.wecom.defaultAccount。`,
-      );
-    }
-  }
 
   if (!botConfigured && !agentConfigured) {
     ctx.log?.warn(`[${account.accountId}] wecom not configured; channel is idle`);
@@ -152,50 +112,38 @@ export async function monitorWecomProvider(
     return;
   }
 
-  const unregisters: Array<() => void> = [];
+  const accountRuntime = createAccountRuntime(ctx);
+  registerAccountRuntime(accountRuntime);
   const botPaths: string[] = [];
   const agentPaths: string[] = [];
+  const runtimeEnv: WecomRuntimeEnv = {
+    log: (message) => ctx.log?.info(message),
+    error: (message) => ctx.log?.error(message),
+  };
+  const botService = new WecomBotCapabilityService(
+    accountRuntime,
+    cfg,
+    runtimeEnv,
+  );
+  const agentIngress = new WecomAgentIngressService(accountRuntime, cfg, runtimeEnv);
   try {
-    if (bot && botConfigured) {
-      const paths = resolveBotRegistrationPaths({
-        accountId: account.accountId,
-        matrixMode,
-      });
-      for (const path of paths) {
-        unregisters.push(
-          registerWecomWebhookTarget({
-            account: bot,
-            config: cfg,
-            runtime: ctx.runtime,
-            // The HTTP handler resolves the active PluginRuntime via getWecomRuntime().
-            // The stored target only needs to be decrypt/verify-capable.
-            core: {} as PluginRuntime,
-            path,
-            statusSink: (patch) => ctx.setStatus({ accountId: ctx.accountId, ...patch }),
-          }),
-        );
-      }
-      botPaths.push(...paths);
-      ctx.log?.info(`[${account.accountId}] wecom bot webhook registered at ${paths.join(", ")}`);
+    ctx.log?.info(
+      `[${account.accountId}] wecom runtime start bot=${bot?.primaryTransport ?? "disabled"} agent=${agentConfigured ? "callback/api" : "disabled"}`,
+    );
+    const botRegistration = botService.start();
+    if (botRegistration) {
+      botPaths.push(...botRegistration.descriptors);
+      ctx.log?.info(
+        `[${account.accountId}] wecom bot ${botRegistration.transport} started: ${botRegistration.descriptors.join(", ")}`,
+      );
     }
 
-    if (agent && agentConfigured) {
-      const paths = resolveAgentRegistrationPaths({
-        accountId: account.accountId,
-        matrixMode,
-      });
-      for (const path of paths) {
-        unregisters.push(
-          registerAgentWebhookTarget({
-            agent,
-            config: cfg,
-            runtime: ctx.runtime,
-            path,
-          }),
-        );
-      }
-      agentPaths.push(...paths);
-      ctx.log?.info(`[${account.accountId}] wecom agent webhook registered at ${paths.join(", ")}`);
+    const agentRegistration = agentIngress.start();
+    if (agentRegistration) {
+      agentPaths.push(...agentRegistration.descriptors);
+      ctx.log?.info(
+        `[${account.accountId}] wecom agent ${agentRegistration.transport} started: ${agentRegistration.descriptors.join(", ")}`,
+      );
     }
 
     accountRouteRegistry.set(account.accountId, { botPaths, agentPaths });
@@ -207,25 +155,27 @@ export async function monitorWecomProvider(
     }
 
     ctx.setStatus({
-      accountId: account.accountId,
       running: true,
       configured: true,
-      webhookPath: botConfigured
-        ? (botPaths[0] ?? WEBHOOK_PATHS.BOT_PLUGIN)
-        : (agentPaths[0] ?? WEBHOOK_PATHS.AGENT_PLUGIN),
+      webhookPath: botPaths[0] ?? agentPaths[0] ?? null,
       lastStartAt: Date.now(),
+      ...accountRuntime.buildRuntimeStatus(),
     });
+    ctx.log?.info(
+      `[${account.accountId}] runtime status health=${accountRuntime.buildRuntimeStatus().health} transports=${(accountRuntime.buildRuntimeStatus().transportSessions ?? []).join(" | ") || "none"}`,
+    );
 
     await waitForAbortSignal(ctx.abortSignal);
   } finally {
-    for (const unregister of unregisters) {
-      unregister();
-    }
+    botService.stop();
+    agentIngress.stop();
     accountRouteRegistry.delete(account.accountId);
+    unregisterAccountRuntime(account.accountId);
     ctx.setStatus({
-      accountId: account.accountId,
       running: false,
       lastStopAt: Date.now(),
+      ...accountRuntime.buildRuntimeStatus(),
     });
+    ctx.log?.info(`[${account.accountId}] wecom runtime stopped`);
   }
 }

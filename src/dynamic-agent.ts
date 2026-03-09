@@ -48,6 +48,12 @@ export function generateAgentId(chatType: "dm" | "group", peerId: string, accoun
     return `wecom-${sanitizedAccountId}-${chatType}-${sanitizedPeer}`;
 }
 
+export function buildAgentSessionTarget(userId: string, accountId?: string): string {
+    const normalizedUserId = String(userId).trim();
+    const sanitizedAccountId = sanitizeDynamicIdPart(accountId ?? "default") || "default";
+    return `wecom-agent:${sanitizedAccountId}:${normalizedUserId}`;
+}
+
 /**
  * **shouldUseDynamicAgent (检查是否使用动态 Agent)**
  *

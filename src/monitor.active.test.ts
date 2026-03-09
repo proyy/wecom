@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { sendActiveMessage, handleWecomWebhookRequest, registerWecomWebhookTarget } from "./monitor.js";
 import * as cryptoHelpers from "./crypto.js";
 import * as runtime from "./runtime.js";
-import * as agentApi from "./agent/api-client.js";
+import * as agentApi from "./transport/agent-api/core.js";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import * as crypto from "node:crypto";
@@ -17,7 +17,7 @@ vi.mock("undici", () => ({
     ProxyAgent: class ProxyAgent { },
 }));
 
-vi.mock("./agent/api-client.js", () => ({
+vi.mock("./transport/agent-api/core.js", () => ({
     sendText: vi.fn(),
     sendMedia: vi.fn(),
     uploadMedia: vi.fn(),
@@ -123,7 +123,7 @@ describe("Monitor Active Features", () => {
         vi.spyOn(runtime, "getWecomRuntime").mockReturnValue(mockCore);
 
         unregisterTarget = registerWecomWebhookTarget({
-            account: { accountId: "default", enabled: true, configured: true, token: "T", encodingAESKey: validKey, receiveId: "R", config: {} as any },
+            account: { accountId: "default", configured: true, token: "T", encodingAESKey: validKey, receiveId: "R", config: {} as any },
             config: {
                 channels: {
                     wecom: {

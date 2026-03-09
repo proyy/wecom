@@ -98,7 +98,6 @@ describe("Monitor Integration: Inbound Image", () => {
             account: {
                 accountId: "test-acc",
                 name: "Test",
-                enabled: true,
                 configured: true,
                 token,
                 encodingAESKey,
