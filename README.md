@@ -30,7 +30,7 @@
 ## 💡 核心价值：为什么选择本插件？
 
 ### 🎉 重大特性一览
-1. **防断连黑科技** (v2.3.10 新增)：针对 DeepSeek R1 等长时间 <think> 的推理模型，首创 **4秒前置保活 ACK** 机制。彻底断绝模型限速或慢思考导致的 WebSocket 5秒超时重试风暴与消息卡死现象。
+1. **防断连黑科技** (v2.3.11 升级)：针对 DeepSeek R1 等长时间 <think> 的推理模型，Bot WS 已升级为 **即时占位 + 持续保活 ACK** 机制。收到用户消息后立即展示 `streamPlaceholderContent`，并在首个真实回复块到来前持续保活，显著降低 WebSocket `invalid req_id` 与消息卡死现象。
 2. **无需域名，极低门槛**：全面支持基于 WebSocket 的长连接（Bot WS）模式接入企业微信机器人，**彻底打通无公网 IP、无备案域名的内网服务器**与企微的实时对话桥梁！
 3. **主动发消息，能力全覆盖**：基于 Agent 模式，全面支持**主动触达**，轻松实现早报定时任务、服务器异常报警、自动每日总结。
 4. **向导自动路由自动适配** (v2.3.10 新增)：在终端执行 `openclaw channels add` 时，若是单企微账号接入，将**静默触发自动 Agent 路由绑定**，丝滑跳过全局冗杂的路由分配步骤。
@@ -55,7 +55,7 @@
 本插件支持 **无限扩展的账号矩阵**，这是本插件区别于普通插件的核心壁垒：
 
 *   **千人千面 (Dynamic Agents)**：内置自动会话隔离机制，百人同时私聊或群聊自动分摊至专属独立助理，告别上下文串扰。
-*   **完全隔离 (Isolation)**：不同 `accountId` 之间的会话、动态 Agent、上下文完全物理隔离，互不串扰。
+*   **账号级隔离 (Isolation)**：不同 `accountId` 之间的收发链路、运行时实例与动态 Agent 默认隔离；若多个账号共用同一个静态 Agent，建议额外配合 `session.dmScope = "per-account-channel-peer"`，避免私聊上下文共用。
 *   **矩阵绑定 (Binding)**：支持一个 OpenClaw 实例同时挂载多个企业/多个应用，通过 `bindings` 灵活分发流量。
 *   **智能路由 (Routing)**：基于入站 `accountId` 自动分拣回复路径，Bot 无法回复时仅回退到**同账号组内**的 Agent，实现闭环的高可用。
 
@@ -194,6 +194,8 @@ openclaw channels add
 说明：
 - 新配置推荐使用 `agent.agentSecret`
 - 历史配置里的 `agent.corpSecret` 仍兼容读取，但后续文档统一使用 `agentSecret`
+- `bot.streamPlaceholderContent` 会同时作用于 `Bot WS` 与 `Bot Webhook`；在 `Bot WS` 下，收到用户消息后会立即显示该占位符，并在长思考期间持续保活。
+- 如果你在一个 OpenClaw 实例里挂载多个 `accounts`，并让它们共同路由到同一个静态 Agent，建议在全局配置里加上 `session.dmScope = "per-account-channel-peer"`，让私聊 session key 显式带上 `accountId`。
 
 ### 1.3 高级网络配置（公网出口代理）
 如果您的服务器使用 **动态 IP** (如家庭宽带、内网穿透) 或 **无公网 IP**，首先使用Bot模式的ws接入方式。
@@ -226,6 +228,10 @@ openclaw channels status --deep
 ### 2.1 仅 Bot WS 模式
 最简的流式交互版（无兜底分发功能）。
 关键约束：`bot.primaryTransport = "ws"` 必须包含 `bot.ws` 参数。
+
+行为说明：
+- 收到用户消息后立即发送一次 `streamPlaceholderContent` 占位流。
+- 若模型首个真实文本块尚未产出，系统会持续发送保活占位，避免长思考期间 `req_id` 失效。
 
 ```jsonc
 {
@@ -279,6 +285,8 @@ openclaw channels status --deep
 
 > **🌟 多账号矩阵下的全局生效与物理隔离**
 > `dynamicAgents` 属于通道级的全局开关，开启后会对配置的所有账号（`accounts`）生效。为了维持账号的绝对隔离，生成的隔离 Agent ID 内置了 Account 维度（例如：`wecom-ops-dm-张三` vs `wecom-sales-dm-张三`），保证跨企业应用依旧安全隔绝。
+>
+> 如果你没有开启 `dynamicAgents`，但多个 `accountId` 共享同一个静态 Agent，请在 OpenClaw 全局配置里显式设置 `session.dmScope = "per-account-channel-peer"`，确保不同账号的私聊上下文不会被收敛到同一个 session key。
 
 ---
 
@@ -370,7 +378,7 @@ Agent 输出 `{"template_card": ...}` 时自动渲染为交互卡片：
 
 ### 5.1 运行约束原则
 - **协议单工限制**：同一账号下，Bot 只能选择一个主传输协议 `primaryTransport` (`ws` 或 `webhook`) 运作。
-- **帧边界不可打破**：Bot WS 是基于官方微信内部通信协议的扩展，它必须携带并原路奉还对应的 `req_id`。标准化的事件不会替代原始数据帧，业务流始终可访问该原始微信底层框架。
+- **帧边界不可打破**：Bot WS 是基于官方微信内部通信协议的扩展，它必须携带并原路奉还对应的 `req_id`。插件会在长思考期间自动发送占位/保活帧来维持该回复窗口，但标准化事件不会替代原始数据帧，业务流始终可访问该原始微信底层框架。
 - **媒体沙盒边界**：不论是 `Webhook`，还是 `WS`，涉及企微媒体加解密的处理绝不再跨界干预业务执行层。由内部服务自动在 Transport / Media Service 网关边界卸载 `aeskey` 解密并转换为统一 OpenClaw 媒体类抛出。
 
 ### 5.2 企业微信群聊交付规则
@@ -432,6 +440,13 @@ openclaw channels status --deep
 
 近期保持高频迭代，最近版本如下：
 
+#### v2.3.11（2026-03-11）
+
+- `Bot WS` 升级为即时占位 + 持续保活，降低长思考时的 `invalid req_id`。
+- `streamPlaceholderContent` 统一作用于 `Bot WS` 与 `Bot Webhook`。
+- onboarding 在空配置下也会提供 `default` 账号选项。
+- README 补充多账号共用静态 Agent 时的 session 隔离建议。
+
 #### v2.3.10（2026-03-10）
 
 - onboarding 默认收敛为 `Bot + WS + 开放私聊`。
@@ -446,7 +461,7 @@ openclaw channels status --deep
 - 恢复 `Bot WS` 流式输出能力。
 - 增强 Agent 回调与发送日志，排障更直接。
 
-详细版本记录见 `changelog/v2.3.10.md` 与 `changelog/v2.3.9.md`。
+详细版本记录见 `changelog/v2.3.11.md`、`changelog/v2.3.10.md` 与 `changelog/v2.3.9.md`。
 
 微信交流群（扫码入群）：
 

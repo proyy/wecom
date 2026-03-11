@@ -1,4 +1,4 @@
-import type { OpenClawConfig, PluginRuntime } from "openclaw/plugin-sdk";
+import { formatErrorMessage, type OpenClawConfig, type PluginRuntime } from "openclaw/plugin-sdk";
 
 import { InMemoryRuntimeStore } from "../store/memory-store.js";
 import { WecomMediaService } from "../shared/media-service.js";
@@ -80,16 +80,17 @@ export class WecomAccountRuntime {
         this.emitStatus();
       },
       fail: async (error: unknown) => {
+        const formattedError = formatErrorMessage(error);
         this.recordOperationalIssue({
           transport: replyHandle.context.transport,
           category: "runtime-error",
           messageId: event.messageId,
           raw: replyHandle.context.raw,
-          summary: `reply-fail ${String(error)}`,
-          error: error instanceof Error ? error.message : String(error),
+          summary: `reply-fail ${formattedError}`,
+          error: formattedError,
         });
         this.log.error?.(
-          `[wecom-runtime] reply-fail account=${event.accountId} transport=${replyHandle.context.transport} messageId=${event.messageId} error=${String(error)}`,
+          `[wecom-runtime] reply-fail account=${event.accountId} transport=${replyHandle.context.transport} messageId=${event.messageId} error=${formattedError}`,
         );
         await replyHandle.fail?.(error);
       },

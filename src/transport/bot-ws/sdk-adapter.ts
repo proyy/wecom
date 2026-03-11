@@ -131,6 +131,13 @@ export class BotWsSdkAdapter {
         client,
         frame,
         accountId: this.runtime.account.accountId,
+        placeholderContent: botAccount.config.streamPlaceholderContent,
+        autoSendPlaceholder:
+          event.inboundKind === "text" ||
+          event.inboundKind === "image" ||
+          event.inboundKind === "file" ||
+          event.inboundKind === "voice" ||
+          event.inboundKind === "mixed",
         onDeliver: () => {
           this.runtime.touchTransportSession("bot-ws", {
             ownerId: this.ownerId,

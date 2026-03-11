@@ -217,6 +217,56 @@ describe("wecom onboarding", () => {
     expect(wecomOnboardingAdapter.dmPolicy).toBeUndefined();
   });
 
+  it("offers default account selection when config has no accounts", async () => {
+    const prompter = createPrompter({
+      select: vi.fn(async ({ message, options }: { message: string; options: Array<{ value: string; label: string }> }) => {
+        if (message === "请选择企业微信接入标识（英文）:") {
+          expect(options.map((option) => option.value)).toEqual(["default", "__new__"]);
+          expect(options[0]?.label).toBe("default（默认标识）");
+          return "default";
+        }
+        if (message === "请选择您要配置的接入模式:") {
+          return "bot";
+        }
+        if (message === "请选择私聊 (DM) 访问策略:") {
+          return "pairing";
+        }
+        throw new Error(`Unexpected select prompt: ${message}`);
+      }) as WizardPrompter["select"],
+      text: vi.fn(async ({ message }: { message: string }) => {
+        if (message === "请输入 BotId（机器人 ID）:") {
+          return "bot-id-default";
+        }
+        if (message === "请输入 Secret（机器人密钥）:") {
+          return "bot-secret-default";
+        }
+        if (message === "流式占位符 (可选):") {
+          return "";
+        }
+        if (message === "欢迎语 (可选):") {
+          return "";
+        }
+        throw new Error(`Unexpected text prompt: ${message}`);
+      }) as WizardPrompter["text"],
+    });
+
+    const result = await wecomOnboardingAdapter.configure({
+      cfg: {} as OpenClawConfig,
+      runtime: createRuntime(),
+      prompter,
+      options: {},
+      accountOverrides: {},
+      shouldPromptAccountIds: true,
+      forceAllowFrom: false,
+    });
+
+    expect(result.accountId).toBe("default");
+    expect(result.cfg.channels?.wecom?.accounts?.default?.bot?.ws).toEqual({
+      botId: "bot-id-default",
+      secret: "bot-secret-default",
+    });
+  });
+
   it("writes agentSecret for fresh agent onboarding", async () => {
     const prompter = createPrompter({
       select: vi.fn(async ({ message }: { message: string }) => {

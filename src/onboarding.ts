@@ -249,10 +249,13 @@ async function resolveOnboardingAccountId(params: {
     let accountId = override ? normalizeAccountId(override) : defaultAccountId;
     if (!override && params.shouldPromptAccountIds) {
         const existingIds = listWecomAccountIds(params.cfg);
+        const selectableIds = existingIds.includes(DEFAULT_ACCOUNT_ID)
+            ? existingIds
+            : [DEFAULT_ACCOUNT_ID, ...existingIds];
         const choice = await params.prompter.select({
             message: "请选择企业微信接入标识（英文）:",
             options: [
-                ...existingIds.map((id) => ({
+                ...selectableIds.map((id) => ({
                     value: id,
                     label: id === DEFAULT_ACCOUNT_ID ? "default（默认标识）" : id,
                 })),
