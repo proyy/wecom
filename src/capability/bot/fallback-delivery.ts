@@ -96,7 +96,7 @@ export async function sendAgentDmText(params: {
   text: string;
   core: PluginRuntime;
 }): Promise<void> {
-  const chunks = params.core.channel.text.chunkText(params.text, 20480);
+  const chunks = params.core.channel.text.chunkText(params.text, 2048);
   for (const chunk of chunks) {
     const trimmed = chunk.trim();
     if (!trimmed) continue;

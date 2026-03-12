@@ -201,7 +201,7 @@ export function createBotStreamOrchestrator(params: {
       const targetAgentId = generateAgentId(chatType === "group" ? "group" : "dm", chatId, account.accountId);
       route.agentId = targetAgentId;
       route.sessionKey = `agent:${targetAgentId}:wecom:${account.accountId}:${chatType === "group" ? "group" : "dm"}:${chatId}`;
-      ensureDynamicAgentListed(targetAgentId, core).catch(() => {});
+      ensureDynamicAgentListed(targetAgentId, core).catch(() => { });
       logVerbose(target, `dynamic agent routing: ${targetAgentId}, sessionKey=${route.sessionKey}`);
     }
 
@@ -254,12 +254,12 @@ export function createBotStreamOrchestrator(params: {
 
     const attachments = mediaPath
       ? [
-          {
-            name: media?.filename || "file",
-            mimeType: mediaType,
-            url: pathToFileURL(mediaPath).href,
-          },
-        ]
+        {
+          name: media?.filename || "file",
+          mimeType: mediaType,
+          url: pathToFileURL(mediaPath).href,
+        },
+      ]
       : undefined;
 
     const ctxPayload = core.channel.reply.finalizeInboundContext({
@@ -267,8 +267,8 @@ export function createBotStreamOrchestrator(params: {
       RawBody: rawBody,
       CommandBody: rawBody,
       Attachments: attachments,
-      From: chatType === "group" ? `wecom:group:${chatId}` : `wecom:${userId}`,
-      To: `wecom:${chatId}`,
+      From: chatType === "group" ? `wecom:group:${chatId}` : `wecom:user:${userId}`,
+      To: chatType === "group" ? `wecom:group:${chatId}` : `wecom:user:${chatId}`,
       SessionKey: route.sessionKey,
       AccountId: route.accountId,
       ChatType: chatType,
@@ -280,7 +280,7 @@ export function createBotStreamOrchestrator(params: {
       MessageSid: msg.msgid,
       CommandAuthorized: commandAuthorized,
       OriginatingChannel: "wecom",
-      OriginatingTo: `wecom:${chatId}`,
+      OriginatingTo: chatType === "group" ? `wecom:group:${chatId}` : `wecom:user:${chatId}`,
       MediaPath: mediaPath,
       MediaType: mediaType,
       MediaUrl: mediaPath,

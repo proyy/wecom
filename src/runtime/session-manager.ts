@@ -46,8 +46,8 @@ export async function prepareInboundSession(params: {
     From:
       event.conversation.peerKind === "group"
         ? `wecom:group:${event.conversation.peerId}`
-        : `wecom:${event.conversation.senderId}`,
-    To: `wecom:${event.conversation.peerId}`,
+        : `wecom:user:${event.conversation.senderId}`,
+    To: event.conversation.peerKind === "group" ? `wecom:group:${event.conversation.peerId}` : `wecom:user:${event.conversation.peerId}`,
     SessionKey: route.sessionKey,
     AccountId: route.accountId,
     ChatType: event.conversation.peerKind,
@@ -57,7 +57,7 @@ export async function prepareInboundSession(params: {
     Provider: "wecom",
     Surface: "wecom",
     OriginatingChannel: "wecom",
-    OriginatingTo: `wecom:${event.conversation.peerId}`,
+    OriginatingTo: event.conversation.peerKind === "group" ? `wecom:group:${event.conversation.peerId}` : `wecom:user:${event.conversation.peerId}`,
     MessageSid: event.messageId,
     CommandAuthorized: true,
     MediaPath: mediaPath,
@@ -69,7 +69,7 @@ export async function prepareInboundSession(params: {
     storePath,
     sessionKey: ctx.SessionKey ?? route.sessionKey,
     ctx,
-    onRecordError: () => {},
+    onRecordError: () => { },
   });
 
   return { route, ctx, storePath };

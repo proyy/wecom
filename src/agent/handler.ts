@@ -369,9 +369,9 @@ async function processAgentMessage(params: {
                 const originalExt = path.extname(originalFileName).toLowerCase();
                 const normalizedContentType =
                     looksText && originalExt === ".md" ? "text/markdown" :
-                    looksText && (!contentType || contentType === "application/octet-stream")
-                        ? "text/plain; charset=utf-8"
-                        : contentType;
+                        looksText && (!contentType || contentType === "application/octet-stream")
+                            ? "text/plain; charset=utf-8"
+                            : contentType;
 
                 const ext = extMap[normalizedContentType] || (looksText ? "txt" : "bin");
                 const filename = `${mediaId}.${ext}`;
@@ -510,7 +510,7 @@ async function processAgentMessage(params: {
         route.agentId = targetAgentId;
         route.sessionKey = `agent:${targetAgentId}:wecom:${agent.accountId}:${isGroup ? "group" : "dm"}:${peerId}`;
         // 异步添加到 agents.list（不阻塞）
-        ensureDynamicAgentListed(targetAgentId, core).catch(() => {});
+        ensureDynamicAgentListed(targetAgentId, core).catch(() => { });
         log?.(`[wecom-agent] dynamic agent routing: ${targetAgentId}, sessionKey=${route.sessionKey}`);
     }
     // ===== 动态 Agent 路由注入结束 =====
@@ -572,8 +572,8 @@ async function processAgentMessage(params: {
         RawBody: finalContent,
         CommandBody: finalContent,
         Attachments: attachments.length > 0 ? attachments : undefined,
-        From: isGroup ? `wecom:group:${peerId}` : `wecom:${fromUser}`,
-        To: `wecom:${peerId}`,
+        From: isGroup ? `wecom:group:${peerId}` : `wecom:user:${fromUser}`,
+        To: isGroup ? `wecom:group:${peerId}` : `wecom:user:${peerId}`,
         SessionKey: route.sessionKey,
         AccountId: route.accountId,
         ChatType: isGroup ? "group" : "direct",
@@ -637,7 +637,8 @@ async function processAgentMessage(params: {
                         },
                         error: message,
                     });
-                }            },
+                }
+            },
             onError: (err: unknown, info: { kind: string }) => {
                 error?.(`[wecom-agent] ${info.kind} reply error: ${String(err)}`);
             },
