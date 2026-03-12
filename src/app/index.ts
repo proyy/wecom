@@ -27,6 +27,10 @@ export function registerAccountRuntime(accountRuntime: WecomAccountRuntime): voi
   console.log(`[wecom-runtime] register account=${accountRuntime.account.accountId}`);
 }
 
+export function getAccountRuntime(accountId: string): WecomAccountRuntime | undefined {
+  return runtimes.get(accountId);
+}
+
 export function getAccountRuntimeSnapshot(accountId: string) {
   return runtimes.get(accountId)?.buildRuntimeStatus();
 }

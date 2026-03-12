@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { OpenClawConfig, PluginRuntime } from "openclaw/plugin-sdk";
-import type { ResolvedAgentAccount, WecomInboundKind } from "../types/index.js";
+import type { ResolvedAgentAccount, UnifiedInboundEvent, WecomInboundKind } from "../types/index.js";
 import {
     extractMsgType,
     extractFromUser,
@@ -349,7 +349,7 @@ async function processAgentMessage(params: {
 
     const isGroup = Boolean(chatId);
     const peerId = isGroup ? chatId! : fromUser;
-    const eventType = String((msg as any).Event ?? "").trim().toLowerCase();
+    const eventType = String(msg.Event ?? "").trim().toLowerCase();
 
     const resolveInboundKind = (): WecomInboundKind => {
         if (msgType === "event") {
@@ -358,8 +358,10 @@ async function processAgentMessage(params: {
         }
         if (msgType === "image") return "image";
         if (msgType === "voice") return "voice";
-        if (msgType === "video") return "video" as any;
+        if (msgType === "video") return "video";
         if (msgType === "file") return "file";
+        if (msgType === "location") return "location";
+        if (msgType === "link") return "link";
         return "text";
     };
 
@@ -377,7 +379,7 @@ async function processAgentMessage(params: {
     const mediaMaxBytes = resolveWecomMediaMaxBytes(config);
 
     // 处理媒体文件
-    const attachments: any[] = []; // TODO: define specific type
+    const attachments: NonNullable<UnifiedInboundEvent["attachments"]> = [];
     let finalContent = content;
     let mediaPath: string | undefined;
     let mediaType: string | undefined;
@@ -433,8 +435,8 @@ async function processAgentMessage(params: {
                 // 构建附件
                 attachments.push({
                     name: originalFileName,
-                    mimeType: normalizedContentType,
-                    url: pathToFileURL(saved.path).href, // 使用跨平台安全的文件 URL
+                    contentType: normalizedContentType,
+                    remoteUrl: pathToFileURL(saved.path).href, // 使用跨平台安全的文件 URL
                 });
 
                 // 更新文本提示

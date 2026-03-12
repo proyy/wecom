@@ -100,9 +100,9 @@ export function mapBotWsFrameToInboundEvent(params: {
       },
     },
     attachments: body.msgtype === "image"
-      ? [{ name: "image", remoteUrl: body.image?.url, aesKey: (body as any).image?.aeskey }]
+      ? [{ name: "image", remoteUrl: (body as any).image?.url, aesKey: (body as any).image?.aeskey }]
       : body.msgtype === "file"
-        ? [{ name: "file", remoteUrl: body.file?.url, aesKey: (body as any).file?.aeskey }]
+        ? [{ name: "file", remoteUrl: (body as any).file?.url, aesKey: (body as any).file?.aeskey }]
         : undefined,
   };
 }
