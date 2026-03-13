@@ -948,7 +948,6 @@ export const wecomDocToolSchema = {
                     description: "修改属性请求列表，必须遵循企业微信 modify_sheet_properties 定义",
                     items: {
                         type: "object",
-                        additionalProperties: false,
                         oneOf: [
                             { required: ["add_sheet_request"], properties: { add_sheet_request: addSheetRequest } },
                             { required: ["update_range_request"], properties: { update_range_request: updateRangeRequest } },
