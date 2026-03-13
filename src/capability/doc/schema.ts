@@ -720,7 +720,7 @@ export const wecomDocToolSchema = {
                     description: "操作列表，必须遵循企业微信 batch_update 格式",
                     items: {
                         type: "object",
-                        additionalProperties: false,
+                        // additionalProperties: false, // 移除此行，因为 oneOf 验证在空 properties 下会导致验证失败
                         oneOf: [
                             { required: ["replace_text"], properties: { replace_text: replaceTextRequest } },
                             { required: ["insert_text"], properties: { insert_text: insertTextRequest } },
