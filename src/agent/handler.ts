@@ -724,25 +724,37 @@ async function processAgentMessage(params: {
                     hasResponseSent = true;
                     clearTimeout(processingTimer);
 
-                    try {
-                        // 统一策略：Agent 模式在群聊场景默认只私信触发者（避免 wr/wc chatId 86008）
-                        await sendAgentApiText({ agent, toUser: fromUser, chatId: undefined, text });
-                        touchTransportSession?.({ lastOutboundAt: Date.now(), running: true });
-                        log?.(`[wecom-agent] reply delivered (${info.kind}) to ${fromUser}`);
-                    } catch (err: unknown) {
-                        const message = err instanceof Error ? `${err.message}${err.cause ? ` (cause: ${String(err.cause)})` : ""}` : String(err);
-                        error?.(`[wecom-agent] reply failed: ${message}`);
-                        auditSink?.({
-                            transport: "agent-callback",
-                            category: "fallback-delivery-failed",
-                            summary: `agent callback reply failed user=${fromUser} kind=${info.kind}`,
-                            raw: {
+                    // 企业微信文本消息长度限制处理（约2048字节，安全起见按600字符切分）
+                    const MAX_CHUNK_SIZE = 600;
+                    let remainingText = text;
+                    
+                    while (remainingText.length > 0) {
+                        const chunk = remainingText.slice(0, MAX_CHUNK_SIZE);
+                        remainingText = remainingText.slice(MAX_CHUNK_SIZE);
+
+                        try {
+                            // 统一策略：Agent 模式在群聊场景默认只私信触发者（避免 wr/wc chatId 86008）
+                            await sendAgentApiText({ agent, toUser: fromUser, chatId: undefined, text: chunk });
+                            touchTransportSession?.({ lastOutboundAt: Date.now(), running: true });
+                            log?.(`[wecom-agent] reply chunk delivered (${info.kind}) to ${fromUser}, len=${chunk.length}`);
+                        } catch (err: unknown) {
+                            const message = err instanceof Error ? `${err.message}${err.cause ? ` (cause: ${String(err.cause)})` : ""}` : String(err);
+                            error?.(`[wecom-agent] reply failed: ${message}`);
+                            auditSink?.({
                                 transport: "agent-callback",
-                                envelopeType: "xml",
-                                body: msg,
-                            },
-                            error: message,
-                        });
+                                category: "fallback-delivery-failed",
+                                summary: `agent callback reply failed user=${fromUser} kind=${info.kind}`,
+                                raw: {
+                                    transport: "agent-callback",
+                                    envelopeType: "xml",
+                                    body: msg,
+                                },
+                                error: message,
+                            });
+                            // 如果分片发送失败，剩余部分可能也无法发送，但在当前逻辑中我们尝试继续发送后续分片，或者应该中断？
+                            // 通常网络错误或鉴权错误会导致所有失败，内容错误可能只影响一段。
+                            // 为了尽力交付，我们继续尝试发送下一段。
+                        }
                     }
                 },
                 onError: (err: unknown, info: { kind: string }) => {
