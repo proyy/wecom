@@ -841,22 +841,40 @@ export class WecomDocClient {
         
         // Build GridData per official API
         // gridData.rows[i].values[j] must be: {cell_value: {text} | {link: {text, url}}, cell_format?: {...}}
+        const rows = (gridData?.rows || []).map((row: any) => ({
+            values: (row.values || []).map((cell: any) => {
+                // If already CellData format, use as-is
+                if (cell && typeof cell === 'object' && cell.cell_value) {
+                    return cell;
+                }
+                // Otherwise wrap primitive as CellValue
+                return { cell_value: { text: String(cell ?? '') } };
+            })
+        }));
+        
+        // Validate range limits per API spec
+        const rowCount = rows.length;
+        const columnCount = rows.length > 0 ? (rows[0].values?.length || 0) : 0;
+        const totalCells = rowCount * columnCount;
+        
+        if (rowCount > 1000) {
+            throw new Error(`行数不能超过 1000，当前：${rowCount}`);
+        }
+        if (columnCount > 200) {
+            throw new Error(`列数不能超过 200，当前：${columnCount}`);
+        }
+        if (totalCells > 10000) {
+            throw new Error(`单元格总数不能超过 10000，当前：${totalCells}`);
+        }
+        
         const finalGridData = {
             start_row: startRow,
             start_column: startColumn,
-            rows: (gridData?.rows || []).map((row: any) => ({
-                values: (row.values || []).map((cell: any) => {
-                    // If already CellData format, use as-is
-                    if (cell && typeof cell === 'object' && cell.cell_value) {
-                        return cell;
-                    }
-                    // Otherwise wrap primitive as CellValue
-                    return { cell_value: { text: String(cell ?? '') } };
-                })
-            }))
+            rows: rows
         };
         
         // Build batch_update request per official API
+        // Note: requests array length ≤ 5 per API spec
         const body = {
             docid: normalizedDocId,
             requests: [{
@@ -872,7 +890,11 @@ export class WecomDocClient {
             actionLabel: "spreadsheet_batch_update",
             agent, body,
         });
-        return { raw: json, docId: body.docid as string };
+        return { 
+            raw: json, 
+            docId: body.docid as string,
+            updatedCells: json.data?.responses?.[0]?.update_range_response?.updated_cells || 0
+        };
     }
     
     /**

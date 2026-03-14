@@ -542,3 +542,135 @@ export interface CreateCollectResponse {
     errmsg: string;
     formid: string;
 }
+
+// --- Spreadsheet (在线表格) Types ---
+
+export interface SheetProperties {
+    sheet_id: string;
+    title: string;
+    row_count: number;
+    column_count: number;
+}
+
+export interface GetSheetPropertiesResponse {
+    errcode: number;
+    errmsg: string;
+    properties: SheetProperties[];
+}
+
+export interface GridData {
+    start_row: number;       // 起始行号（从 0 开始）
+    start_column: number;    // 起始列号（从 0 开始）
+    rows: RowData[];         // 行数据列表
+}
+
+export interface RowData {
+    values: CellData[];      // 该行各列单元格数据
+}
+
+export interface CellData {
+    cell_value?: CellValue;    // 单元格数据内容（可选）
+    cell_format?: CellFormat;  // 单元格样式（可选）
+}
+
+export interface CellValue {
+    text?: string;           // 纯文本
+    link?: Link;             // 超链接（与 text 互斥）
+}
+
+export interface Link {
+    url: string;             // 链接地址
+    text: string;            // 链接显示文本
+}
+
+export interface CellFormat {
+    text_format?: TextFormat;  // 文字样式
+}
+
+export interface TextFormat {
+    font?: string;           // 字体名称（如 "Microsoft YaHei"）
+    font_size?: number;      // 字号，最大 72
+    bold?: boolean;
+    italic?: boolean;
+    strikethrough?: boolean;
+    underline?: boolean;
+    color?: Color;           // 文字颜色（RGBA）
+}
+
+export interface Color {
+    red: number;     // 0~255
+    green: number;   // 0~255
+    blue: number;    // 0~255
+    alpha: number;   // 0~255，默认 255（不透明）
+}
+
+export enum Dimension {
+    ROW = "ROW",         // 行
+    COLUMN = "COLUMN"    // 列
+}
+
+// Batch Update Requests
+export interface AddSheetRequest {
+    add_sheet_request: {
+        title: string;
+        row_count?: number;
+        column_count?: number;
+    };
+}
+
+export interface DeleteSheetRequest {
+    delete_sheet_request: {
+        sheet_id: string;
+    };
+}
+
+export interface UpdateRangeRequest {
+    update_range_request: {
+        sheet_id: string;
+        grid_data: GridData;
+    };
+}
+
+export interface DeleteDimensionRequest {
+    delete_dimension_request: {
+        sheet_id: string;
+        dimension: Dimension;
+        start_index: number;    // 从 1 开始
+        end_index: number;      // 从 1 开始，不包含
+    };
+}
+
+export type SpreadsheetUpdateRequest = 
+    | AddSheetRequest
+    | DeleteSheetRequest
+    | UpdateRangeRequest
+    | DeleteDimensionRequest;
+
+export interface SpreadsheetBatchUpdateResponse {
+    errcode: number;
+    errmsg: string;
+    data?: {
+        responses: Array<{
+            add_sheet_response?: {
+                properties: SheetProperties;
+            };
+            delete_sheet_response?: {
+                sheet_id: string;
+            };
+            update_range_response?: {
+                updated_cells: number;
+            };
+            delete_dimension_response?: {
+                deleted: number;
+            };
+        }>;
+    };
+}
+
+export interface GetSheetRangeDataResponse {
+    errcode: number;
+    errmsg: string;
+    data: {
+        result: GridData;
+    };
+}
