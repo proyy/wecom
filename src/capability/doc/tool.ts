@@ -504,8 +504,9 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                     const docEndIndex = currentContent.document.end;
                                     
                                     if (isImageItem(item)) {
-                                        // Insert image: first upload image to get image_id, then insert
+                                        // Insert image: upload first, then create paragraph, then get content, then insert image
                                         // Official API requires: upload first, then use returned URL as image_id
+                                        // Must call get_content after each update to get correct indices
                                         const imgUrl = getImageUrl(item);
                                         
                                         try {
@@ -517,26 +518,37 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                                 base64_content: base64,
                                             });
                                             
-                                            // Step 2: Insert image using the uploaded URL
-                                            // Image must be inserted inside a paragraph, not at document level
+                                            // Step 2: Create new paragraph for the image
                                             await docClient.updateDocContent({
                                                 agent: account,
                                                 docId: result.docId,
-                                                requests: [
-                                                    {
-                                                        insert_paragraph: {
-                                                            location: { index: docEndIndex }
-                                                        }
-                                                    },
-                                                    {
-                                                        insert_image: {
-                                                            image_id: uploadResult.url,  // ✅ Use uploaded URL
-                                                            location: { index: docEndIndex },
-                                                            width: uploadResult.width,
-                                                            height: uploadResult.height
-                                                        }
+                                                requests: [{
+                                                    insert_paragraph: {
+                                                        location: { index: docEndIndex }
                                                     }
-                                                ]
+                                                }]
+                                            });
+                                            
+                                            // Step 3: Get updated content to find the new paragraph index
+                                            const updatedContent = await docClient.getDocContent({
+                                                agent: account,
+                                                docId: result.docId,
+                                            });
+                                            
+                                            // Step 4: Insert image into the new paragraph at the end
+                                            const newParaIndex = updatedContent.document.end;
+                                            
+                                            await docClient.updateDocContent({
+                                                agent: account,
+                                                docId: result.docId,
+                                                requests: [{
+                                                    insert_image: {
+                                                        image_id: uploadResult.url,  // ✅ Use uploaded URL
+                                                        location: { index: newParaIndex },
+                                                        width: uploadResult.width,
+                                                        height: uploadResult.height
+                                                    }
+                                                }]
                                             });
                                         } catch (uploadErr) {
                                             // If upload fails, log error but continue with other content
@@ -547,23 +559,36 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                         const text = getText(item);
                                         if (!text) continue;
 
-                                        // Insert text: create paragraph then insert text
+                                        // Insert text: create paragraph first, then get new content, then insert text
+                                        // Must call get_content after each update to get correct indices
                                         await docClient.updateDocContent({
                                             agent: account,
                                             docId: result.docId,
-                                            requests: [
-                                                {
-                                                    insert_paragraph: {
-                                                        location: { index: docEndIndex }
-                                                    }
-                                                },
-                                                {
-                                                    insert_text: {
-                                                        text: text,
-                                                        location: { index: docEndIndex }
-                                                    }
+                                            requests: [{
+                                                insert_paragraph: {
+                                                    location: { index: docEndIndex }
                                                 }
-                                            ]
+                                            }]
+                                        });
+                                        
+                                        // Get updated content to find the new paragraph index
+                                        const updatedContent = await docClient.getDocContent({
+                                            agent: account,
+                                            docId: result.docId,
+                                        });
+                                        
+                                        // Insert text into the new paragraph at the end
+                                        const newParaIndex = updatedContent.document.end;
+                                        
+                                        await docClient.updateDocContent({
+                                            agent: account,
+                                            docId: result.docId,
+                                            requests: [{
+                                                insert_text: {
+                                                    text: text,
+                                                    location: { index: newParaIndex }
+                                                }
+                                            }]
                                         });
                                     }
                                 }
