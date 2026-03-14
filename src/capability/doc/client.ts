@@ -638,45 +638,37 @@ export class WecomDocClient {
         startRow?: number;
         startColumn?: number;
         gridData?: any;
-        values?: any[][]; // Optional 2D array of raw cell values
     }) {
-        const { agent, docId, sheetId, startRow = 0, startColumn = 0, gridData, values } = params;
+        const { agent, docId, sheetId, startRow = 0, startColumn = 0, gridData } = params;
         
-        // Validate required docId (consistent with getSheetProperties)
+        // Validate required docId
         const normalizedDocId = readString(docId);
         if (!normalizedDocId) {
-            throw new Error('docId is required and must be a non-empty string');
+            throw new Error('docId is required');
         }
         
         // Validate required sheetId
         const normalizedSheetId = readString(sheetId);
-        if (!normalizedSheetId || normalizedSheetId.trim() === '') {
-            throw new Error('sheetId is required and must be a non-empty string');
+        if (!normalizedSheetId) {
+            throw new Error('sheetId is required');
         }
         
-        // Build GridData with proper structure per WeCom API
-        // If values provided (raw 2D array), convert to GridData format
-        // If gridData provided, normalize it
-        let finalGridData: any = {};
-        if (values && Array.isArray(values)) {
-            // Convert raw values to CellData format
-            finalGridData = {
-                start_row: startRow,
-                start_column: startColumn,
-                rows: values.map((rowValues: any[]) => ({
-                    values: rowValues.map((cell: any) => this.normalizeCell(cell))
-                }))
-            };
-        } else if (gridData && typeof gridData === "object" && gridData.rows) {
-            // gridData already has rows, normalize each cell
-            finalGridData = {
-                start_row: gridData.startRow ?? gridData.start_row ?? 0,
-                start_column: gridData.startColumn ?? gridData.start_column ?? 0,
-                rows: gridData.rows.map((row: any) => ({
-                    values: row.values.map((cell: any) => this.normalizeCell(cell))
-                }))
-            };
-        }
+        // Build GridData per official API
+        // gridData.rows[i].values[j] must be: {cell_value: {text} | {link: {text, url}}, cell_format?: {...}}
+        const finalGridData = {
+            start_row: startRow,
+            start_column: startColumn,
+            rows: (gridData?.rows || []).map((row: any) => ({
+                values: (row.values || []).map((cell: any) => {
+                    // If already CellData format, use as-is
+                    if (cell && typeof cell === 'object' && cell.cell_value) {
+                        return cell;
+                    }
+                    // Otherwise wrap primitive as CellValue
+                    return { cell_value: { text: String(cell ?? '') } };
+                })
+            }))
+        };
         
         // Build batch_update request per official API
         const body = {
@@ -695,67 +687,6 @@ export class WecomDocClient {
             agent, body,
         });
         return { raw: json, docId: body.docid as string };
-    }
-    
-    /**
-     * Normalize cell data to CellData format per official API
-     * Official format: {cell_value: {text: string} | {link: {text, url}}, cell_format?: {text_format: {...}}}
-     */
-    private normalizeCell(cell: any): any {
-        // If cell already has cell_value (already in CellData format), return as-is
-        if (cell && typeof cell === "object" && 'cell_value' in cell) {
-            return cell;
-        }
-        
-        // If cell is a string, wrap it
-        if (typeof cell === "string") {
-            return { cell_value: { text: cell } };
-        }
-        
-        // If cell is null/undefined, return empty text
-        if (!cell) {
-            return { cell_value: { text: "" } };
-        }
-        
-        // If cell is a number, convert to string
-        if (typeof cell === "number") {
-            return { cell_value: { text: String(cell) } };
-        }
-        
-        // Cell is an object - check if it's already a CellValue (has text or link)
-        if (cell.text != null || cell.link) {
-            // This is a CellValue, wrap it in CellData
-            const cellData: any = { cell_value: cell };
-            if (cell.cell_format) {
-                cellData.cell_format = this.buildCellFormat(cell.cell_format);
-            }
-            return cellData;
-        }
-        
-        // Check if it has inline format properties
-        const hasFormat = cell.font !== undefined || cell.font_size !== undefined || 
-                         cell.bold !== undefined || cell.italic !== undefined || 
-                         cell.strikethrough !== undefined || cell.underline !== undefined || 
-                         cell.color !== undefined;
-        
-        // Build cell value
-        let cellValue: any = { text: String(cell.text ?? cell ?? "") };
-        if (cell.link && typeof cell.link === "object") {
-            cellValue = {
-                link: {
-                    text: String(cell.link.text ?? ""),
-                    url: String(cell.link.url ?? "")
-                }
-            };
-        }
-        
-        // Build CellData
-        const cellData: any = { cell_value: cellValue };
-        if (hasFormat) {
-            cellData.cell_format = this.buildCellFormat(cell);
-        }
-        
-        return cellData;
     }
     
     /**
