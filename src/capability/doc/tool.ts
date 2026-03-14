@@ -530,21 +530,14 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                             });
                                             
                                             // Step 3: Get updated content to find the new paragraph index
-                                            const updatedContent = await docClient.getDocContent({
-                                                agent: account,
-                                                docId: result.docId,
-                                            });
-                                            
-                                            // Step 4: Insert image into the new paragraph at the end
-                                            const newParaIndex = updatedContent.document.end;
-                                            
+                                            // Image must be inserted into the paragraph at docEndIndex (the new paragraph)
                                             await docClient.updateDocContent({
                                                 agent: account,
                                                 docId: result.docId,
                                                 requests: [{
                                                     insert_image: {
                                                         image_id: uploadResult.url,  // ✅ Use uploaded URL
-                                                        location: { index: newParaIndex },
+                                                        location: { index: docEndIndex },
                                                         width: uploadResult.width,
                                                         height: uploadResult.height
                                                     }
@@ -559,36 +552,24 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                         const text = getText(item);
                                         if (!text) continue;
 
-                                        // Insert text: create paragraph first, then get new content, then insert text
-                                        // Must call get_content after each update to get correct indices
+                                        // Insert text: create paragraph first, then insert text into that paragraph
+                                        // The new paragraph is created at docEndIndex, so we insert text at the same index
                                         await docClient.updateDocContent({
                                             agent: account,
                                             docId: result.docId,
-                                            requests: [{
-                                                insert_paragraph: {
-                                                    location: { index: docEndIndex }
+                                            requests: [
+                                                {
+                                                    insert_paragraph: {
+                                                        location: { index: docEndIndex }
+                                                    }
+                                                },
+                                                {
+                                                    insert_text: {
+                                                        text: text,
+                                                        location: { index: docEndIndex }
+                                                    }
                                                 }
-                                            }]
-                                        });
-                                        
-                                        // Get updated content to find the new paragraph index
-                                        const updatedContent = await docClient.getDocContent({
-                                            agent: account,
-                                            docId: result.docId,
-                                        });
-                                        
-                                        // Insert text into the new paragraph at the end
-                                        const newParaIndex = updatedContent.document.end;
-                                        
-                                        await docClient.updateDocContent({
-                                            agent: account,
-                                            docId: result.docId,
-                                            requests: [{
-                                                insert_text: {
-                                                    text: text,
-                                                    location: { index: newParaIndex }
-                                                }
-                                            }]
+                                            ]
                                         });
                                     }
                                 }
