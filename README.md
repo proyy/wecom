@@ -533,6 +533,46 @@ openclaw channels status --deep
 
 近期保持高频迭代，最近版本如下：
 
+#### v2.3.14-b1（2026-03-14）智能更新模式
+
+> **重磅修复**：解决企微文档 API 批量更新失败问题
+
+**核心改进**：
+- ✅ **智能更新模式 (smartMode)**：自动处理企微文档 API 限制，逐个执行请求
+- ✅ **自动版本管理**：每次操作前自动获取最新文档结构和版本号
+- ✅ **自动重试机制**：段落索引错误自动重试（最多 3 次）
+- ✅ **insertTextSmart**：智能插入文本，支持自动分段
+- ✅ **insertImageSmart**：智能插入图片，自动创建空段落
+
+**修复问题**：
+- ❌ `ParagraphValidator cannot find p's parent`
+- ❌ `TextValidator cannot find p parent`
+- ❌ `DrawingValidator cannot find p parent`
+
+**使用示例**：
+```typescript
+// 智能模式（默认开启）- 自动处理所有限制
+await docClient.updateDocContent({
+    agent, docId,
+    requests: [
+        { insert_paragraph: { location: { index: 1 } } },
+        { insert_text: { location: { index: 2 }, text: "内容" } }
+    ],
+    smartMode: true  // 默认开启
+});
+
+// 高级方法 - 自动分段
+await docClient.insertTextSmart({
+    agent, docId, afterIndex: 0,
+    text: "第一行\n第二行\n第三行",
+    createParagraphs: true
+});
+```
+
+**详细文档**：[docs/update-content-fix.md](./docs/update-content-fix.md) | [docs/examples.md](./docs/examples.md)
+
+---
+
 #### v2.3.12-zh（2026-03-13）by proyy
 
 > 本版本 WeCom Doc 功能增强来自 [proyy/wecom](https://github.com/proyy/wecom)。
