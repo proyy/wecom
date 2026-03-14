@@ -356,6 +356,22 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             adminUsers: params.adminUsers,
                         });
 
+                        // Auto-set security rules for better default permissions (internal users can edit)
+                        try {
+                            await docClient.setDocJoinRule({
+                                agent: account,
+                                docId: result.docId,
+                                request: {
+                                    enable_corp_internal: true,
+                                    corp_internal_auth: 2, // 2 = edit permission
+                                    enable_corp_external: false,
+                                    ban_share_external: false,
+                                },
+                            });
+                        } catch (err) {
+                            // Non-fatal: document created, just default permissions may be read-only
+                        }
+
                         // Handle initial content (title/body separation) if provided
                         let contentResult: any = null;
                         if (Array.isArray(params.init_content) && params.init_content.length > 0) {

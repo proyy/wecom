@@ -737,7 +737,7 @@ export const wecomDocToolSchema = {
         },
         {
             type: "object",
-            additionalProperties: false,
+            additionalProperties: true,
             required: ["action", "docId", "request"],
             properties: {
                 action: { const: "set_member_auth" },
@@ -746,7 +746,7 @@ export const wecomDocToolSchema = {
                 request: {
                     type: "object",
                     description: "mod_doc_member 请求体。插件会自动补 docid。",
-                    additionalProperties: false,
+                    additionalProperties: true,
                     properties: {
                         update_file_member_list: docMemberListProperty,
                         del_file_member_list: delDocMemberListProperty

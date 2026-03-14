@@ -383,11 +383,42 @@ export class WecomDocClient {
         authLevel?: number;
     }) {
         const { agent, docId, viewers, collaborators, removeViewers, removeCollaborators, authLevel } = params;
+        
+        // Auto-detect: if adding collaborators, check if they are already viewers and need to be removed
+        // This prevents the "user is viewer but not collaborator" issue
+        let finalRemoveViewers = removeViewers;
+        if (collaborators && !removeViewers) {
+            // Need to check current auth status
+            try {
+                const currentAuth = await this.getDocAuth({ agent, docId });
+                const viewerUserIds = new Set(
+                    (currentAuth.docMembers || [])
+                        .filter((m: any) => m.type === 1 && m.userid)
+                        .map((m: any) => m.userid)
+                );
+                const newCollaboratorUserIds = normalizeDocMemberEntryList(collaborators)
+                    .map(e => e.userid)
+                    .filter(Boolean) as string[];
+                
+                // Auto-add viewers who are being promoted to collaborators
+                const autoRemoveViewers = newCollaboratorUserIds
+                    .filter(userid => viewerUserIds.has(userid))
+                    .map(userid => ({ userid, type: 1 }));
+                
+                if (autoRemoveViewers.length > 0) {
+                    finalRemoveViewers = autoRemoveViewers;
+                }
+            } catch (err) {
+                // If we can't check auth, proceed without auto-removal
+                // The caller can explicitly pass removeViewers if needed
+            }
+        }
+        
         const payload = buildDocMemberAuthRequest({
             docId,
             viewers,
             collaborators,
-            removeViewers,
+            removeViewers: finalRemoveViewers,
             removeCollaborators,
             authLevel,
         });
