@@ -1,4 +1,5 @@
 export {
+  getAccountRuntime,
   getAccountRuntimeSnapshot,
   getBotWsPushHandle,
   getWecomRuntime,

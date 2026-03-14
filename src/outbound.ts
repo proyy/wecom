@@ -2,7 +2,7 @@ import type { ChannelOutboundAdapter, ChannelOutboundContext } from "openclaw/pl
 
 import { resolveWecomAccount, resolveWecomAccountConflict, resolveWecomAccounts } from "./config/index.js";
 import { WecomAgentDeliveryService } from "./capability/agent/index.js";
-import { getBotWsPushHandle, getWecomRuntime } from "./runtime.js";
+import { getAccountRuntime, getBotWsPushHandle, getWecomRuntime } from "./runtime.js";
 import { resolveScopedWecomTarget } from "./target.js";
 
 function resolveOutboundAccountOrThrow(params: {
@@ -141,6 +141,8 @@ export const wecomOutbound: ChannelOutboundAdapter = {
   },
   sendText: async ({ cfg, to, text, accountId }: ChannelOutboundContext) => {
     // signal removed - not supported in current SDK
+    // Resolve agent config first for logging
+    const agent = resolveAgentConfigOrThrow({ cfg, accountId });
 
     // 体验优化：/new /reset 的“New session started”回执在 OpenClaw 核心里是英文固定文案，
     // 且通过 routeReply 走 wecom outbound（Agent 主动发送）。
@@ -182,7 +184,6 @@ export const wecomOutbound: ChannelOutboundAdapter = {
         text: outgoingText,
       });
       if (!sentViaBotWs) {
-        const agent = resolveAgentConfigOrThrow({ cfg, accountId });
         const deliveryService = new WecomAgentDeliveryService(agent);
         await deliveryService.sendText({
           to,
