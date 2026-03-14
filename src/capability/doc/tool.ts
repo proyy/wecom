@@ -77,7 +77,7 @@ function buildDocAuthDiagnosis(result: any = {}, requesterSenderId = "") {
     ];
     const recommendations: string[] = [];
     if (likelyAnonymousLinkFailure) {
-        recommendations.push("当前更像是仅企业内可访问；匿名浏览器或未登录企业微信环境通常会显示"文档不存在"。");
+        recommendations.push('当前更像是仅企业内可访问；匿名浏览器或未登录企业微信环境通常会显示"文档不存在"。');
     }
     if (requester) {
         if (requesterIsCollaborator) {
@@ -176,7 +176,7 @@ function buildShareLinkDiagnosis(params: { shareUrl: string; finalUrl: string; s
     ];
     const recommendations: string[] = [];
     if (likelyUnavailableToGuest) {
-        recommendations.push("当前链接对 guest/未登录企业微信环境返回 blankpage，外部访问会表现为打不开或像"文档不存在"。");
+        recommendations.push('当前链接对 guest/未登录企业微信环境返回 blankpage，外部访问会表现为打不开或像"文档不存在"。');
     }
     if (shareCode) {
         recommendations.push(`当前链接带有分享码 scode=${shareCode}。如分享码过期或未生效，外部访问会失败。`);
