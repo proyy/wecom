@@ -101,6 +101,8 @@ temp/
 
 # Project specific
 src/dynamic-agent.test.ts
-docs
+# 文档 Markdown 文件应该提交（README 引用的文档）
+!docs/*.md
+!docs/**/*.md
 .openclaw
 package-lock.json
