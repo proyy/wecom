@@ -51,6 +51,7 @@ export function generateAgentId(chatType: "dm" | "group", peerId: string, accoun
 export function buildAgentSessionTarget(userId: string, accountId?: string): string {
     const normalizedUserId = String(userId).trim();
     const sanitizedAccountId = sanitizeDynamicIdPart(accountId ?? "default") || "default";
+    // Always use explicit user: prefix to avoid ambiguity with numeric party IDs
     return `wecom-agent:${sanitizedAccountId}:user:${normalizedUserId}`;
 }
 

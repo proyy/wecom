@@ -1,6 +1,12 @@
 import type { BaseMessage, EventMessage, WsFrame } from "@wecom/aibot-node-sdk";
 
-import type { ResolvedBotAccount, UnifiedInboundEvent, WecomInboundKind } from "../../types/index.js";
+import { buildInboundBody } from "../bot-webhook/message-shape.js";
+import type {
+  ResolvedBotAccount,
+  UnifiedInboundEvent,
+  WecomBotInboundMessage,
+  WecomInboundKind,
+} from "../../types/index.js";
 
 function resolveInboundKind(message: BaseMessage | EventMessage): WecomInboundKind {
   if (message.msgtype === "event") {
@@ -24,26 +30,10 @@ function resolveInboundKind(message: BaseMessage | EventMessage): WecomInboundKi
 }
 
 function resolveEventText(message: BaseMessage | EventMessage, account: ResolvedBotAccount): string {
-  if (message.msgtype === "text") {
-    return message.text?.content ?? "";
+  if (message.msgtype !== "event") {
+    return buildInboundBody(message as WecomBotInboundMessage);
   }
-  if (message.msgtype === "voice") {
-    return message.voice?.content ?? "";
-  }
-  if (message.msgtype === "mixed") {
-    return (message.mixed?.msg_item ?? [])
-      .map((item: { msgtype: string; text?: { content?: string } }) =>
-        item.msgtype === "text" ? item.text?.content ?? "" : "[image]",
-      )
-      .filter(Boolean)
-      .join("\n");
-  }
-  if (message.msgtype === "image") {
-    return "[image]";
-  }
-  if (message.msgtype === "file") {
-    return "[file]";
-  }
+
   const event = message as EventMessage;
   if (event.event?.eventtype === "enter_chat" && account.config.welcomeText) {
     return account.config.welcomeText;

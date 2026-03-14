@@ -2,22 +2,10 @@ import type { ChannelOutboundAdapter, ChannelOutboundContext } from "openclaw/pl
 
 import { resolveWecomAccount, resolveWecomAccountConflict, resolveWecomAccounts } from "./config/index.js";
 import { WecomAgentDeliveryService } from "./capability/agent/index.js";
-import { getAccountRuntime, getBotWsPushHandle, getWecomRuntime } from "./app/index.js";
+import { getBotWsPushHandle, getWecomRuntime } from "./runtime.js";
+import { resolveScopedWecomTarget } from "./target.js";
 
-async function sendTextViaBotWs(accountId: string, to: string | { chatid?: string; touser?: string; toparty?: string; totag?: string }, text: string) {
-  const pushHandle = getBotWsPushHandle(accountId);
-  if (!pushHandle?.isConnected()) {
-    return false;
-  }
-
-  const chatId = typeof to === "string" ? to : to.chatid || to.touser;
-  if (!chatId) return false;
-
-  await pushHandle.sendMarkdown(chatId, text);
-  return true;
-}
-
-function resolveAgentConfigOrThrow(params: {
+function resolveOutboundAccountOrThrow(params: {
   cfg: ChannelOutboundContext["cfg"];
   accountId?: string | null;
 }) {
@@ -39,10 +27,17 @@ function resolveAgentConfigOrThrow(params: {
       );
     }
   }
-  const account = resolveWecomAccount({
+  return resolveWecomAccount({
     cfg: params.cfg,
     accountId: params.accountId,
-  }).agent;
+  });
+}
+
+function resolveAgentConfigOrThrow(params: {
+  cfg: ChannelOutboundContext["cfg"];
+  accountId?: string | null;
+}) {
+  const account = resolveOutboundAccountOrThrow(params).agent;
   if (!account?.apiConfigured) {
     throw new Error(
       `WeCom outbound requires Agent mode for account=${params.accountId ?? "default"}. Configure channels.wecom.accounts.<accountId>.agent (or legacy channels.wecom.agent).`,
@@ -58,6 +53,81 @@ function resolveAgentConfigOrThrow(params: {
   return account;
 }
 
+function isExplicitAgentTarget(raw: string | undefined): boolean {
+  return /^wecom-agent:/i.test(String(raw ?? "").trim());
+}
+
+function resolveBotWsChatTarget(params: {
+  to: string | undefined;
+  accountId: string;
+}): string | undefined {
+  const scoped = resolveScopedWecomTarget(params.to, params.accountId);
+  if (!scoped) {
+    return undefined;
+  }
+  if (scoped.accountId && scoped.accountId !== params.accountId) {
+    throw new Error(
+      `WeCom outbound account mismatch: target belongs to account=${scoped.accountId}, current account=${params.accountId}.`,
+    );
+  }
+  if (scoped.target.chatid) {
+    return scoped.target.chatid;
+  }
+  if (scoped.target.touser) {
+    return scoped.target.touser;
+  }
+  return undefined;
+}
+
+function shouldPreferBotWsOutbound(params: {
+  cfg: ChannelOutboundContext["cfg"];
+  accountId?: string | null;
+  to: string | undefined;
+}): { preferred: boolean; accountId: string } {
+  const account = resolveOutboundAccountOrThrow({
+    cfg: params.cfg,
+    accountId: params.accountId,
+  });
+  return {
+    preferred: !isExplicitAgentTarget(params.to) && Boolean(account.bot?.configured && account.bot.primaryTransport === "ws" && account.bot.wsConfigured),
+    accountId: account.accountId,
+  };
+}
+
+async function sendTextViaBotWs(params: {
+  cfg: ChannelOutboundContext["cfg"];
+  accountId?: string | null;
+  to: string | undefined;
+  text: string;
+}): Promise<boolean> {
+  const { preferred, accountId } = shouldPreferBotWsOutbound(params);
+  if (!preferred) {
+    return false;
+  }
+  const chatId = resolveBotWsChatTarget({
+    to: params.to,
+    accountId,
+  });
+  if (!chatId) {
+    return false;
+  }
+  const handle = getBotWsPushHandle(accountId);
+  if (!handle) {
+    throw new Error(
+      `WeCom outbound account=${accountId} is configured for Bot WS active push, but no live WS runtime is registered.`,
+    );
+  }
+  if (!handle.isConnected()) {
+    throw new Error(
+      `WeCom outbound account=${accountId} is configured for Bot WS active push, but the WS transport is not connected.`,
+    );
+  }
+  console.log(`[wecom-outbound] Sending Bot WS active message to target=${String(params.to ?? "")} chatId=${chatId} (len=${params.text.length})`);
+  await handle.sendMarkdown(chatId, params.text);
+  console.log(`[wecom-outbound] Successfully sent Bot WS active message to ${chatId}`);
+  return true;
+}
+
 export const wecomOutbound: ChannelOutboundAdapter = {
   deliveryMode: "direct",
   chunkerMode: "text",
@@ -71,9 +141,6 @@ export const wecomOutbound: ChannelOutboundAdapter = {
   },
   sendText: async ({ cfg, to, text, accountId }: ChannelOutboundContext) => {
     // signal removed - not supported in current SDK
-
-    const agent = resolveAgentConfigOrThrow({ cfg, accountId });
-    const deliveryService = new WecomAgentDeliveryService(agent);
 
     // 体验优化：/new /reset 的“New session started”回执在 OpenClaw 核心里是英文固定文案，
     // 且通过 routeReply 走 wecom outbound（Agent 主动发送）。
@@ -106,16 +173,22 @@ export const wecomOutbound: ChannelOutboundAdapter = {
 
     getAccountRuntime(agent.accountId)?.log.info?.(`[wecom-outbound] Sending text to target=${String(to ?? "")} (len=${outgoingText.length})`);
 
+    let sentViaBotWs = false;
     try {
-      const sentViaWs = await sendTextViaBotWs(agent.accountId, to, outgoingText);
-      if (sentViaWs) {
-        getAccountRuntime(agent.accountId)?.log.info?.(`[wecom-outbound] Successfully sent text via Bot WS to ${String(to ?? "")}`);
-      } else {
+      sentViaBotWs = await sendTextViaBotWs({
+        cfg,
+        accountId,
+        to,
+        text: outgoingText,
+      });
+      if (!sentViaBotWs) {
+        const agent = resolveAgentConfigOrThrow({ cfg, accountId });
+        const deliveryService = new WecomAgentDeliveryService(agent);
         await deliveryService.sendText({
           to,
           text: outgoingText,
         });
-        getAccountRuntime(agent.accountId)?.log.info?.(`[wecom-outbound] Successfully sent text via Agent API to ${String(to ?? "")}`);
+        console.log(`[wecom-outbound] Successfully sent Agent text to ${String(to ?? "")}`);
       }
     } catch (err) {
       getAccountRuntime(agent.accountId)?.log.error?.(`[wecom-outbound] Failed to send text to ${String(to ?? "")}: ${err instanceof Error ? err.message : String(err)}`);
@@ -124,13 +197,17 @@ export const wecomOutbound: ChannelOutboundAdapter = {
 
     return {
       channel: "wecom",
-      messageId: `sent-${Date.now()}`,
+      messageId: `${sentViaBotWs ? "bot-ws" : "agent"}-${Date.now()}`,
       timestamp: Date.now(),
     };
   },
   sendMedia: async ({ cfg, to, text, mediaUrl, accountId }: ChannelOutboundContext) => {
     // signal removed - not supported in current SDK
 
+    const { preferred } = shouldPreferBotWsOutbound({ cfg, accountId, to });
+    if (preferred) {
+      console.log(`[wecom-outbound] Bot WS active push does not support outbound media; falling back to Agent for target=${String(to ?? "")}`);
+    }
     const agent = resolveAgentConfigOrThrow({ cfg, accountId });
     const deliveryService = new WecomAgentDeliveryService(agent);
     if (!mediaUrl) {

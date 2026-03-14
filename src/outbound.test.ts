@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./transport/agent-api/core.js", () => ({
   sendText: vi.fn(),
@@ -7,6 +7,13 @@ vi.mock("./transport/agent-api/core.js", () => ({
 }));
 
 describe("wecomOutbound", () => {
+  afterEach(async () => {
+    const runtime = await import("./runtime.js");
+    runtime.unregisterBotWsPushHandle("default");
+    runtime.unregisterBotWsPushHandle("acct-ws");
+    vi.unstubAllGlobals();
+  });
+
   it("does not crash when called with core outbound params", async () => {
     const { wecomOutbound } = await import("./outbound.js");
     await expect(
@@ -171,6 +178,151 @@ describe("wecomOutbound", () => {
     );
 
     now.mockRestore();
+  });
+
+  it("prefers Bot WS active push for text when ws is the active bot transport", async () => {
+    const { wecomOutbound } = await import("./outbound.js");
+    const runtime = await import("./runtime.js");
+    const api = await import("./transport/agent-api/core.js");
+    const sendMarkdown = vi.fn().mockResolvedValue(undefined);
+    const now = vi.spyOn(Date, "now").mockReturnValue(789);
+    runtime.registerBotWsPushHandle("acct-ws", {
+      isConnected: () => true,
+      sendMarkdown,
+    });
+    (api.sendText as any).mockClear();
+
+    const cfg = {
+      channels: {
+        wecom: {
+          enabled: true,
+          defaultAccount: "acct-ws",
+          accounts: {
+            "acct-ws": {
+              enabled: true,
+              bot: {
+                primaryTransport: "ws",
+                ws: {
+                  botId: "bot-1",
+                  secret: "secret-1",
+                },
+              },
+              agent: {
+                corpId: "corp-ws",
+                corpSecret: "agent-secret",
+                agentId: 10001,
+                token: "token-ws",
+                encodingAESKey: "aes-ws",
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const result = await wecomOutbound.sendText({
+      cfg,
+      accountId: "acct-ws",
+      to: "user:lisi",
+      text: "hello ws",
+    } as any);
+
+    expect(sendMarkdown).toHaveBeenCalledWith("lisi", "hello ws");
+    expect(api.sendText).not.toHaveBeenCalled();
+    expect(result.messageId).toBe("bot-ws-789");
+
+    now.mockRestore();
+  });
+
+  it("does not silently fall back to Agent when Bot WS active push is configured but unavailable", async () => {
+    const { wecomOutbound } = await import("./outbound.js");
+    const api = await import("./transport/agent-api/core.js");
+    (api.sendText as any).mockClear();
+
+    const cfg = {
+      channels: {
+        wecom: {
+          enabled: true,
+          bot: {
+            primaryTransport: "ws",
+            ws: {
+              botId: "bot-1",
+              secret: "secret-1",
+            },
+          },
+          agent: {
+            corpId: "corp",
+            corpSecret: "secret",
+            agentId: 1000002,
+            token: "token",
+            encodingAESKey: "aes",
+          },
+        },
+      },
+    };
+
+    await expect(
+      wecomOutbound.sendText({
+        cfg,
+        to: "user:zhangsan",
+        text: "hello",
+      } as any),
+    ).rejects.toThrow(/no live ws runtime is registered/i);
+    expect(api.sendText).not.toHaveBeenCalled();
+  });
+
+  it("keeps outbound media on Agent even when Bot WS is active", async () => {
+    const { wecomOutbound } = await import("./outbound.js");
+    const runtime = await import("./runtime.js");
+    const api = await import("./transport/agent-api/core.js");
+    const sendMarkdown = vi.fn().mockResolvedValue(undefined);
+    runtime.registerBotWsPushHandle("default", {
+      isConnected: () => true,
+      sendMarkdown,
+    });
+    (api.uploadMedia as any).mockResolvedValue("media-1");
+    (api.sendMedia as any).mockResolvedValue(undefined);
+    (api.sendMedia as any).mockClear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+        headers: new Headers({ "content-type": "image/png" }),
+      }),
+    );
+
+    const cfg = {
+      channels: {
+        wecom: {
+          enabled: true,
+          bot: {
+            primaryTransport: "ws",
+            ws: {
+              botId: "bot-1",
+              secret: "secret-1",
+            },
+          },
+          agent: {
+            corpId: "corp",
+            corpSecret: "secret",
+            agentId: 1000002,
+            token: "token",
+            encodingAESKey: "aes",
+          },
+        },
+      },
+    };
+
+    await wecomOutbound.sendMedia({
+      cfg,
+      to: "user:zhangsan",
+      text: "caption",
+      mediaUrl: "https://example.com/media.png",
+    } as any);
+
+    expect(api.sendMedia).toHaveBeenCalledTimes(1);
+    expect(sendMarkdown).not.toHaveBeenCalled();
   });
 
   it("uses account-scoped agent config in matrix mode", async () => {

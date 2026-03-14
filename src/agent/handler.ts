@@ -650,32 +650,31 @@ async function processAgentMessage(params: {
         }
         return;
     }
-
-    const ctxPayload = core.channel.reply.finalizeInboundContext({
-        Body: body,
-        RawBody: finalContent,
-        CommandBody: finalContent,
-        Attachments: attachments.length > 0 ? attachments : undefined,
-        From: isGroup ? `wecom:group:${peerId}` : `wecom:user:${fromUser}`,
-        To: isGroup ? `wecom:group:${peerId}` : `wecom:user:${peerId}`,
-        SessionKey: route.sessionKey,
-        AccountId: route.accountId,
-        ChatType: isGroup ? "group" : "direct",
-        ConversationLabel: fromLabel,
-        SenderName: fromUser,
-        SenderId: fromUser,
-        Provider: "wecom",
-        Surface: "webchat",
-        OriginatingChannel: "wecom",
-        // 标记为 Agent 会话的回复路由目标，避免与 Bot 会话混淆：
-        // - 用于让 /new /reset 这类命令回执不被 Bot 侧策略拦截
-        // - 群聊场景也统一路由为私信触发者（与 deliver 策略一致）
-        OriginatingTo: buildAgentSessionTarget(fromUser, agent.accountId),
-        CommandAuthorized: authz.commandAuthorized ?? true,
-        MediaPath: mediaPath,
-        MediaType: mediaType,
-        MediaUrl: mediaPath,
-    });
+const ctxPayload = core.channel.reply.finalizeInboundContext({
+    Body: body,
+    RawBody: finalContent,
+    CommandBody: finalContent,
+    Attachments: attachments.length > 0 ? attachments : undefined,
+    From: isGroup ? `wecom:group:${peerId}` : `wecom:user:${fromUser}`,
+    To: `wecom:user:${peerId}`,
+    SessionKey: route.sessionKey,
+    AccountId: route.accountId,
+    ChatType: isGroup ? "group" : "direct",
+    ConversationLabel: fromLabel,
+    SenderName: fromUser,
+    SenderId: fromUser,
+    Provider: "wecom",
+    Surface: "webchat",
+    OriginatingChannel: "wecom",
+    // 标记为 Agent 会话的回复路由目标，避免与 Bot 会话混淆：
+    // - 用于让 /new /reset 这类命令回执不被 Bot 侧策略拦截
+    // - 群聊场景也统一路由为私信触发者（与 deliver 策略一致）
+    OriginatingTo: buildAgentSessionTarget(fromUser, agent.accountId),
+    CommandAuthorized: authz.commandAuthorized ?? true,
+    MediaPath: mediaPath,
+    MediaType: mediaType,
+    MediaUrl: mediaPath,
+});
 
     // 记录会话
     await core.channel.session.recordInboundSession({
