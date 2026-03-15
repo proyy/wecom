@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <strong>🚀 深度适配企业微信原生文档（WeCom Doc）：将对话沉淀为企业数字资产 [v2.3.14 重磅]</strong>
+  <strong>🚀 深度适配企业微信原生文档（WeCom Doc）：将对话沉淀为企业数字资产，并补齐写入稳定性 [v2.3.15]</strong>
 </p>
 
 <p align="center">
@@ -113,6 +113,19 @@
 ## 📋 最近更新
 
 > 项目保持高频迭代，核心改进一览：
+
+#### v2.3.15（2026-03-14）
+
+- 🛠 **[重要修复]** 创建企微文档时，`init_content` 现在会按官方 Wedoc 流程执行，图片会先上传再插入，减少标题正文错位、图片不显示、内容插入到错误位置的问题。
+- 📄 **[重要修复]** 修复 `document.batch_update` 相关的索引与写入稳定性问题，混合执行 `insert_paragraph`、`insert_text`、`insert_image` 时更不容易触发校验报错。
+- 🔧 恢复并补齐企微文档客户端缺失接口，重新覆盖文档、在线表格、智能表格、收集表与权限管理等能力，避免工具调用时缺方法或直接失败。
+- 📊 完善在线表格与收集表的类型定义、参数校验和错误提示，超限或结构不完整的请求会更早被拦截。
+- 💬 **[重要修复]** 修复企业微信群聊回复时 `To` 目标解析错误，群聊、私聊、部门、标签目标现在会按正确前缀解析，减少 `81013 user & party & tag all invalid` 报错。
+
+**升级指引：**
+```bash
+openclaw plugins update wecom
+```
 
 #### v2.3.14（2026-03-14）
 
@@ -448,7 +461,7 @@ Agent 输出 `{"template_card": ...}` 时自动渲染为交互卡片：
 系统会自动以异步、排队、防冲突的队列，将被激活的动态专用助理自动追加写入底层核心系统配置文件 `openclaw.json` (或相应 yaml) 的 `agents.list` 数组中，这就意味着：这套扩容体系是对上层管理员完全**透明且免运维**的，机器人活了，号也就落盘注册好了。
 
 ### 4.4 📝 Docs 极客级协作资产管控
-从 v2.3.14 起，OpenClaw WeCom 插件已深度集成了企微原生协作文档的管理策略引擎。只需自然语言指令，即可唤醒这一能力：
+从 v2.3.14 起，OpenClaw WeCom 插件已深度集成企微原生协作文档；在 v2.3.15 中，又重点补上了 `init_content`、图片插入、批量更新索引与群聊目标解析的稳定性问题。现在你既可以让 AI 建档，也更适合直接拿来做真实写入与协作：
 
 **【典型赋能场景】**
 1. **自动化建档**：对机器人说：“建一个名为『Q1需求追踪』的表格，并把群里的人都加上可写权限。”它将自动调用 `create_doc` 并生成带权限的企微链接。
@@ -529,155 +542,7 @@ openclaw channels status --deep
 
 ## 七、📮 联系我 与 版本协议
 
-### 最近更新
 
-近期保持高频迭代，最近版本如下：
-
-#### v2.3.14-b1（2026-03-14）智能更新模式
-
-> **重磅修复**：解决企微文档 API 批量更新失败问题
-
-**核心改进**：
-- ✅ **智能更新模式 (smartMode)**：自动处理企微文档 API 限制，逐个执行请求
-- ✅ **自动版本管理**：每次操作前自动获取最新文档结构和版本号
-- ✅ **自动重试机制**：段落索引错误自动重试（最多 3 次）
-- ✅ **insertTextSmart**：智能插入文本，支持自动分段
-- ✅ **insertImageSmart**：智能插入图片，自动创建空段落
-
-**修复问题**：
-- ❌ `ParagraphValidator cannot find p's parent`
-- ❌ `TextValidator cannot find p parent`
-- ❌ `DrawingValidator cannot find p parent`
-
-**使用示例**：
-```typescript
-// 智能模式（默认开启）- 自动处理所有限制
-await docClient.updateDocContent({
-    agent, docId,
-    requests: [
-        { insert_paragraph: { location: { index: 1 } } },
-        { insert_text: { location: { index: 2 }, text: "内容" } }
-    ],
-    smartMode: true  // 默认开启
-});
-
-// 高级方法 - 自动分段
-await docClient.insertTextSmart({
-    agent, docId, afterIndex: 0,
-    text: "第一行\n第二行\n第三行",
-    createParagraphs: true
-});
-```
-
-**详细文档**：[docs/update-content-fix.md](./docs/update-content-fix.md) | [docs/examples.md](./docs/examples.md)
-
----
-
-#### v2.3.12-zh（2026-03-13）by proyy
-
-> 本版本 WeCom Doc 功能增强来自 [proyy/wecom](https://github.com/proyy/wecom)。
-
-**WeCom Doc 功能模块详细核验报告：**
-
-### 📊 功能实现状态总览
-
-| 功能模块 | 状态 | 说明 |
-| :--- | :--- | :--- |
-| **管理文档** | ✅ 已实现 | 新建/删除/重命名/信息获取/分享均已就绪 |
-| **管理文档内容** | ✅ 已实现 | 文档内容读写、表格行列操作均已支持 |
-| **智能表格** | ✅ 已实现 | 子表/视图/字段/记录/编组的全生命周期管理 |
-| **设置文档权限** | ✅ 已实现 | 成员权限、安全设置、查看规则均已覆盖 |
-| **管理收集表** | ✅ 已实现 | 创建/编辑/统计/答案读取均已实现 |
-| **高级账号管理** | ✅ 已实现 | 分配/取消/列表查询均已实现 |
-| **素材管理** | ✅ 已实现 | 支持上传图片到文档专用素材库 |
-| **回调通知** | ❌ **未实现** | **当前系统会丢弃文档相关回调事件** |
-| **接收外部数据** | ✅ 已实现 | 已支持向智能表格添加/更新外部记录 |
-
-### 📝 逐项详细确认
-
-#### 1. 管理文档
-*   **新建文档**: `createDoc` (支持文档、表格、智能表格)
-*   **重命名文档**: `renameDoc`
-*   **删除文档**: `deleteDoc`
-*   **获取文档基础信息**: `getDocBaseInfo`
-*   **分享文档**: `shareDoc`
-
-#### 2. 管理文档内容
-*   **编辑文档内容**: `updateDocContent`
-*   **获取文档数据**: `getDocContent`
-*   **管理表格内容**: `modifySheetProperties`
-*   **编辑表格内容**: `editSheetData`
-*   **获取表格行列信息**: `getSheetProperties`
-*   **获取表格数据**: `getSheetData`
-
-#### 3. 管理智能表格内容
-*   **添加/删除/更新/查询子表**: `smartTableAddSheet`, `smartTableDeleteSheet` 等
-*   **添加/删除/更新/查询视图**: `smartTableAddView`, `smartTableView` 等
-*   **添加/删除/更新/查询字段**: `smartTableAddField`, `smartTableUpdateField` 等
-*   **添加/删除/更新/查询记录**: `smartTableAddRecords`, `smartTableGetRecords` 等
-*   **添加/删除/更新/获取编组**: 已通过 `smartTableUpdateGrouping` 等接口实现
-
-#### 4. 设置文档权限
-*   **获取文档权限信息**: `getDocAuth`
-*   **修改文档查看规则**: `setDocJoinRule`
-*   **修改文档通知范围及权限**: `modDocMemberNotifiedScope`, `setDocMemberAuth`
-*   **修改文档安全设置**: `setDocSafetySetting`, `modDocSecuritySetting`
-*   **管理智能表格内容权限**: 已包含在上述权限接口中 (支持对子表粒度控制)
-
-#### 5. 管理收集表
-*   **创建/编辑收集表**: `createCollect`, `modifyCollect`
-*   **获取收集表信息**: `getFormInfo`
-*   **收集表的统计信息查询**: `getFormStatistic`
-*   **读取收集表答案**: `getFormAnswer`
-
-#### 6. 回调通知 (⚠️ 缺失)
-*   修改文档成员事件
-*   删除文档事件
-*   收集表完成事件
-*   删除收集表事件
-*   修改收集表设置事件
-*   字段变更事件
-*   记录变更事件
-
-**原因诊断**: 在 `src/agent/handler.ts` 的 `shouldProcessAgentInboundMessage` 函数中，系统目前**显式过滤**了除 `subscribe`, `enter_agent`, `batch_job_result` 之外的所有事件。文档变更事件（如 `update_doc`, `doc_create` 等）会被视为 `unknown event` 而直接丢弃。
-
-#### 7. 接收外部数据到智能表格
-*   **概述/添加记录**: `smartTableAddExternalRecords`
-*   **更新记录**: `smartTableUpdateExternalRecords`
-
-#### 8. 高级功能账号管理 & 素材管理
-*   **账号管理**: `assignDocAdvancedAccount`, `cancelDocAdvancedAccount`, `getDocAdvancedAccountList`
-*   **上传文档图片**: `uploadDocImage`
-
-#### v2.3.11-zh（2026-03-12）by proyy
-
-- 全面增加企业微信 WeCom Doc 工具链：文档/表格/智能表格/收集表，以及全面的 CRUD 支持。
-- 增加文档权限与协作者管理 API。
-- 针对分享链接可用性诊断并修复底层返回带下划线 URL 被 markdown 行内截断导致打不开的问题。
-- 针对长文本分段问题进行的 BUG 修复与升级。
-
-#### v2.3.11（2026-03-11）
-
-- `Bot WS` 升级为即时占位 + 持续保活，降低长思考时的 `invalid req_id`。
-- `streamPlaceholderContent` 统一作用于 `Bot WS` 与 `Bot Webhook`。
-- onboarding 在空配置下也会提供 `default` 账号选项。
-- README 补充多账号共用静态 Agent 时的 session 隔离建议。
-
-#### v2.3.10（2026-03-10）
-
-- onboarding 默认收敛为 `Bot + WS + 开放私聊`。
-- 修复 `Bot WS` 长文本双重回复问题。
-- 修复首个自定义接入标识时报 `default not found`。
-- Agent 新配置统一使用 `agentSecret`。
-
-#### v2.3.9（2026-03-09）
-
-- Bot 默认接入改为 `WebSocket`，无需域名更易上手。
-- 完善中文 onboarding，减少重复提示。
-- 恢复 `Bot WS` 流式输出能力。
-- 增强 Agent 回调与发送日志，排障更直接。
-
-详细版本记录见 `changelog/v2.3.11.md`、`changelog/v2.3.10.md` 与 `changelog/v2.3.9.md`。
 
 微信交流群（扫码入群）：
 
