@@ -559,21 +559,41 @@
 {
   "name": "wecom_doc",
   "action": "smartsheet_add_sheet",
-  "description": "添加智能表格子表",
+  "description": "添加智能表格子表（空白表格，无默认字段）",
   "parameters": {
-    "docId": "string (必填) - 文档 ID",
-    "title": "string (可选) - 子表标题",
-    "index": "number (可选) - 子表下标"
+    "docId": "string (必填) - 智能表格文档 ID",
+    "title": "string (可选) - 子表标题，默认'智能表'",
+    "index": "number (可选) - 子表下标（从 0 开始）"
   },
   "returns": {
     "properties": {
-      "sheet_id": "生成的子表 ID",
+      "sheet_id": "生成的子表 ID（6 位随机）",
       "title": "子表标题",
       "index": "子表下标"
     }
-  }
+  },
+  "notes": [
+    "重要：通过 add_sheet 创建的子表是空白的，无默认字段、无视图、无记录",
+    "需要使用 add_fields 添加字段，add_view 添加视图，add_records 添加记录",
+    "与 create 创建的智能表格不同（create 会创建带 5 个默认字段的模板表格）"
+  ]
 }
 ```
+
+**重要说明**：
+
+| 创建方式 | 默认字段 | 适用场景 |
+|---------|---------|---------|
+| `create` (docType=smart_table) | 5 个默认字段（人员、文本、数字、日期、单选） | 快速搭建，接受默认字段 |
+| `smartsheet_add_sheet` | 无默认字段（完全空白） | 需要完全自定义字段 |
+
+**默认字段限制**：
+- ❌ **不能删除**默认字段（系统字段，删除会报错 `errcode 2000055`）
+- ❌ **不能修改**默认字段的类型（会报错 `errcode 2022010/2022017`）
+- ✅ **可以修改**默认字段的标题
+- ✅ **可以添加**自定义字段
+
+**推荐做法**：如果需要完全自定义字段，请使用 `smartsheet_add_sheet` 创建空白子表。
 
 ---
 
@@ -767,7 +787,7 @@
 {
   "name": "wecom_doc",
   "action": "smartsheet_update_fields",
-  "description": "更新字段标题或属性",
+  "description": "更新字段标题或属性（不能更新字段类型）",
   "parameters": {
     "docId": "string (必填) - 文档 ID",
     "sheetId": "string (必填) - 子表 ID",
@@ -781,12 +801,23 @@
 {
   "field_id": "字段 ID",
   "field_title": "可选：新字段标题",
-  "field_type": "字段类型（必须为原类型）",
+  "field_type": "字段类型（必须为原类型，不能修改）",
   "property_number": "可选：数字类型属性"
 }
 ```
 
-**注意**：至少提供 `field_title` 或一个 `property_*` 属性
+**⚠️ 重要限制**：
+- ❌ **不能修改字段类型**（官方文档 doc2.txt 行 1158 明确说明）
+- ❌ 尝试修改字段类型会报错：
+  - `errcode 2022010`：无效字段类型
+  - `errcode 2022017`：字段类型不匹配
+- ✅ **可以修改**字段标题
+- ✅ **可以修改**字段属性（如数字精度、选项列表等）
+- ✅ 至少提供 `field_title` 或一个 `property_*` 属性
+
+**如需不同类型的字段**：
+1. 先用 `smartsheet_del_fields` 删除旧字段
+2. 再用 `smartsheet_add_fields` 创建新字段类型的字段
 
 ---
 
@@ -908,32 +939,115 @@
 }
 ```
 
-**记录格式**：
+**⚠️ 关键要求**：
+
+1. **values 的 key 必须准确匹配字段标题或字段 ID**
+   - 使用 `key_type: "CELL_VALUE_KEY_TYPE_FIELD_TITLE"` 时，key 为字段标题
+   - 使用 `key_type: "CELL_VALUE_KEY_TYPE_FIELD_ID"` 时，key 为字段 ID
+   - **推荐先调用 `smartsheet_get_fields` 获取准确的字段信息**
+
+2. **不同字段类型需要不同的值格式**：
+
+| 字段类型 | 值格式 | 示例 |
+|---------|--------|------|
+| 文本 (FIELD_TYPE_TEXT) | `[{type: "text", text: "内容"}]` | `[{type: "text", text: "张三"}]` |
+| 数字 (FIELD_TYPE_NUMBER) | `double` | `123.45` |
+| 复选框 (FIELD_TYPE_CHECKBOX) | `bool` | `true` |
+| 日期 (FIELD_TYPE_DATE_TIME) | `string` (毫秒时间戳) | `"1715846245084"` |
+| 图片 (FIELD_TYPE_IMAGE) | `[{id, title, image_url, width, height}]` | 见下方示例 |
+| 文件 (FIELD_TYPE_ATTACHMENT) | `[{name, size, file_ext, file_id, file_url, file_type, doc_type}]` | 见下方示例 |
+| 成员 (FIELD_TYPE_USER) | `[{user_id: "userid"}]` | `[{user_id: "zhangsan"}]` |
+| 链接 (FIELD_TYPE_URL) | `[{type: "url", text: "文本", link: "https://..."}]` | 见下方示例 |
+| 多选 (FIELD_TYPE_SELECT) | `[{id, text}]` | `[{id: "1", text: "选项 1"}]` |
+| 单选 (FIELD_TYPE_SINGLE_SELECT) | `[{id, text}]` | `[{id: "1", text: "选项"}]` |
+| 进度 (FIELD_TYPE_PROGRESS) | `double` (0-1) | `0.75` |
+| 电话 (FIELD_TYPE_PHONE_NUMBER) | `string` | `"13800138000"` |
+| 邮箱 (FIELD_TYPE_EMAIL) | `string` | `"test@example.com"` |
+| 地理位置 (FIELD_TYPE_LOCATION) | `[{id, latitude, longitude, title}]` | 见下方示例 |
+| 货币 (FIELD_TYPE_CURRENCY) | `double` | `100.50` |
+| 百分数 (FIELD_TYPE_PERCENTAGE) | `double` (0-1) | `0.85` |
+| 条码 (FIELD_TYPE_BARCODE) | `string` | `"6901234567890"` |
+
+**完整示例**：
 ```json
 {
-  "values": {
-    "字段标题或字段 ID": [
-      {"type": "text", "text": "文本内容"},
-      {"type": "url", "text": "链接文本", "link": "https://..."}
-    ]
-  }
+  "docId": "DOC123",
+  "sheetId": "SHEET456",
+  "key_type": "CELL_VALUE_KEY_TYPE_FIELD_TITLE",
+  "records": [{
+    "values": {
+      "姓名": [{"type": "text", "text": "张三"}],
+      "年龄": 28,
+      "是否党员": true,
+      "入职日期": "1715846245084",
+      "绩效": 0.9,
+      "工资": 15000.50,
+      "完成度": 0.85,
+      "联系电话": "13800138000",
+      "邮箱": "zhangsan@example.com",
+      "条码": "6901234567890",
+      "部门": [{"id": "1", "text": "技术部"}],
+      "岗位": [{"id": "1", "text": "工程师"}, {"id": "2", "text": "架构师"}],
+      "成员": [{"user_id": "lisi"}],
+      "链接": [{"type": "url", "text": "企业微信", "link": "https://work.weixin.qq.com"}],
+      "位置": [{"id": "14313005936863363130", "latitude": "23.10647", "longitude": "113.32446", "title": "广州塔"}]
+    }
+  }]
 }
 ```
 
-**字段类型值格式**：
-- 文本：`[{type: "text", "text": "内容"}]`
-- 数字：`[123]`
-- 日期：`["1715846245084"]` (毫秒时间戳)
-- 复选框：`[true]`
-- 单选/多选：`[{id: "1", text: "选项"}]`
-- 成员：`[{user_id: "zhangsan"}]`
-- 链接：`[{type: "url", text: "文本", link: "https://..."}]`
-- 进度：`[0.75]`
-- 货币：`[100.50]`
-- 百分数：`[0.85]`
-- 条码：`["6901234567890"]`
+**特殊字段值格式示例**：
 
-**限制**：单次添加建议≤500 行
+```json
+// 图片
+{"values": {"图片": [{
+  "id": "img_001",
+  "title": "产品照片",
+  "image_url": "https://example.com/image.jpg",
+  "width": 800,
+  "height": 600
+}]}}
+
+// 文件
+{"values": {"附件": [{
+  "name": "产品说明书.pdf",
+  "size": 1024000,
+  "file_ext": "PDF",
+  "file_id": "FILE123",
+  "file_url": "https://example.com/file.pdf",
+  "file_type": "50",
+  "doc_type": "2"
+}]}}
+
+// 链接
+{"values": {"官网": [{
+  "type": "url",
+  "text": "企业微信官网",
+  "link": "https://work.weixin.qq.com"
+}]}}
+
+// 地理位置
+{"values": {"办公地点": [{
+  "id": "14313005936863363130",
+  "latitude": "23.10647",
+  "longitude": "113.32446",
+  "source_type": 1,
+  "title": "广州塔"
+}]}}
+```
+
+**⚠️ 常见错误**：
+
+| 错误码 | 原因 | 解决方案 |
+|--------|------|---------|
+| `errcode 40058` | 字段标题/ID 不匹配 | 先用 `get_fields` 获取准确字段信息 |
+| `errcode 40058` | 值格式错误 | 对照上方表格使用正确格式 |
+| `errcode 40058` | 缺少必填字段 | 检查 records 数组是否为空 |
+| `errcode 2000055` | 尝试向系统字段添加数据 | 避免向创建时间、最后编辑时间等系统字段添加数据 |
+
+**限制**：
+- 单次添加建议 ≤ 500 行
+- 不能向创建时间、最后编辑时间、创建人、最后编辑人四种系统字段添加数据
 
 ---
 
@@ -1524,35 +1638,81 @@
 
 ## 十、注意事项
 
-### 1. 批量操作限制
+### 10.1 智能表格重要限制
+
+#### 默认字段限制
+
+**创建方式对比**：
+
+| 创建方式 | API | 默认字段 | 能否删除 | 能否修改类型 |
+|---------|-----|---------|---------|------------|
+| 创建智能表格文档 | `create` (docType=smart_table) | 5 个（人员、文本、数字、日期、单选） | ❌ 不能 | ❌ 不能 |
+| 添加空白子表 | `smartsheet_add_sheet` | 无 | N/A | N/A |
+
+**系统默认字段（5 个）**：
+- ❌ **不能删除**（删除会报错 `errcode 2000055`）
+- ❌ **不能修改类型**（修改会报错 `errcode 2022010/2022017`）
+- ✅ **可以修改标题**
+- ✅ **可以修改属性**（如选项列表、数字精度等）
+
+**推荐做法**：
+- 如果需要完全自定义字段，使用 `smartsheet_add_sheet` 创建空白子表
+- 如果接受默认字段，使用 `create` 创建智能表格文档
+
+#### 字段类型修改限制
+
+**官方文档明确说明**（doc2.txt 行 1158）：
+> "该接口只能更新字段名、字段属性，**不能更新字段类型**。"
+
+**错误码**：
+- `errcode 2022010`：无效字段类型
+- `errcode 2022017`：字段类型不匹配
+
+**解决方案**：
+如需不同类型的字段：
+1. 用 `smartsheet_del_fields` 删除旧字段
+2. 用 `smartsheet_add_fields` 创建新字段类型的字段
+
+#### 记录添加格式要求
+
+**关键要求**：
+1. values 的 key 必须准确匹配字段标题或字段 ID
+2. 不同字段类型需要不同的值格式
+3. 不能向 4 种系统字段添加数据（创建时间、最后编辑时间、创建人、最后编辑人）
+
+**推荐流程**：
+```
+1. 调用 smartsheet_get_fields 获取字段列表
+2. 确认字段标题或字段 ID
+3. 根据字段类型准备对应格式的值
+4. 调用 smartsheet_add_records 添加记录
+```
+
+### 10.2 批量操作限制
 
 | 操作类型 | 限制 |
-|---------|------|
+|--------|------|
 | 文档批量更新 | ≤ 30 个操作 |
 | 表格批量更新 | ≤ 5 个操作 |
 | 收集表答案查询 | ≤ 100 个答案 ID |
-| 智能表格单次添加/更新记录 | 建议 ≤ 500 行 |
+| 智能表格单次添加记录 | 建议 ≤ 500 行 |
+| 智能表格单次更新记录 | 建议 ≤ 500 行 |
+| 智能表格单次删除记录 | 建议 ≤ 500 行 |
 
-### 2. 版本控制
+### 10.3 版本控制
 
 - 更新文档内容时，`version` 与最新版差值不能超过 100
 - 建议每次更新前获取最新文档内容
 - 自动分批时会为每批获取最新版本
 
-### 3. 权限说明
+### 10.4 权限说明
 
 - 自建应用需配置到"可调用应用"列表
 - 第三方应用需具有"文档"权限
 - 代开发自建应用需具有"文档"权限
 - 只能操作该应用创建的文档
 
-### 4. 字段类型匹配
-
-- 添加/更新字段时，`field_type` 必须与 `property_*` 属性匹配
-- 更新字段时不能修改字段类型
-- 创建时间、最后编辑时间、创建人、最后编辑人四种字段不能通过 API 添加/更新
-
-### 5. 记录操作限制
+### 10.5 智能表格容量限制
 
 | 限制项 | 值 |
 |--------|-----|
@@ -1563,7 +1723,7 @@
 | 单表最多编组数 | 150 个 |
 | 每个编组最多字段数 | 150 个 |
 
-### 6. 收集表限制
+### 10.6 收集表限制
 
 | 限制项 | 值 |
 |--------|-----|
@@ -1573,7 +1733,7 @@
 | 图片/文件上传数量 | 1-9 个 |
 | 图片/文件大小限制 | 最大 3000MB |
 
-### 7. 互斥参数
+### 10.7 互斥参数
 
 - `timed_repeat_info.enable` 与 `timed_finish` 互斥
 - `filter_spec` 与 `sort` 互斥（查询记录时）
