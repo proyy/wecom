@@ -204,24 +204,46 @@ function flattenDeepNesting(text: string): string {
 }
 
 function normalizeTables(text: string): string {
-  const lines = text.split("\n");
+  // Pass 1: stitch broken table rows back together.
+  // Models sometimes split a single row across two lines: the first starts
+  // with | but does not end with |, and the second is a continuation that
+  // doesn't start with |.  Re-join them before block detection.
+  const rawLines = text.split("\n");
+  const stitched: string[] = [];
+
+  for (const line of rawLines) {
+    const prev = stitched[stitched.length - 1];
+    if (
+      prev !== undefined &&
+      prev.trim().startsWith("|") &&
+      !prev.trim().endsWith("|") &&
+      !line.trim().startsWith("|") &&
+      line.includes("|")
+    ) {
+      stitched[stitched.length - 1] = prev + line;
+    } else {
+      stitched.push(line);
+    }
+  }
+
+  // Pass 2: detect and normalize table blocks.
   const out: string[] = [];
   let i = 0;
 
-  while (i < lines.length) {
-    if (looksLikeTableRow(lines[i]!)) {
-      const tableBlock = [lines[i]!];
+  while (i < stitched.length) {
+    if (looksLikeTableRow(stitched[i]!)) {
+      const tableBlock: string[] = [stitched[i]!];
       let j = i + 1;
 
-      while (j < lines.length && looksLikeTableRow(lines[j]!)) {
-        tableBlock.push(lines[j]!);
+      while (j < stitched.length && looksLikeTableRow(stitched[j]!)) {
+        tableBlock.push(stitched[j]!);
         j += 1;
       }
 
       out.push(...normalizeTableBlock(tableBlock));
       i = j;
     } else {
-      out.push(lines[i]!);
+      out.push(stitched[i]!);
       i += 1;
     }
   }
@@ -231,7 +253,9 @@ function normalizeTables(text: string): string {
 
 function looksLikeTableRow(line: string): boolean {
   const stripped = String(line).trim();
-  if (!stripped.includes("|")) return false;
+  // Must start with | — this rules out continuation fragments and avoids
+  // false positives on lines that merely contain a pipe character.
+  if (!stripped.startsWith("|")) return false;
   return (stripped.match(/\|/g) || []).length >= 2;
 }
 
@@ -253,6 +277,9 @@ function normalizeTableBlock(lines: string[]): string[] {
       parts = parts.slice(0, -1);
       right = " |";
     }
+
+    // Normalise alignment markers in separator rows (:---:, :---, ---:) → ---
+    parts = parts.map(p => (/^:?-+:?$/.test(p) ? "---" : p));
 
     return left + parts.join(" | ") + right;
   });
