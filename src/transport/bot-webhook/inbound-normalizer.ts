@@ -257,7 +257,7 @@ export async function processBotInboundMessage(params: {
   const { target, msg, recordOperationalIssue } = params;
   const msgtype = String(msg.msgtype ?? "").toLowerCase();
   const aesKey = target.account.encodingAESKey;
-  const maxBytes = resolveWecomMediaMaxBytes(target.config);
+  const maxBytes = resolveWecomMediaMaxBytes(target.config, target.account.accountId);
   const proxyUrl = resolveWecomEgressProxyUrl(target.config);
 
   if (msgtype === "image") {
@@ -275,7 +275,7 @@ export async function processBotInboundMessage(params: {
         });
         return { body: "[image]", media: { buffer: decrypted.buffer, contentType: inferred.contentType, filename: inferred.filename } };
       } catch (err) {
-        target.runtime.error?.(`图片解密失败: ${String(err)}; 可调大 channels.wecom.media.maxBytes（当前=${maxBytes}）例如：openclaw config set channels.wecom.media.maxBytes ${50 * 1024 * 1024}`);
+        target.runtime.error?.(`图片解密失败: ${String(err)}; 可调大 channels.wecom.mediaMaxMb（当前=${Math.round(maxBytes / (1024 * 1024))}MB）例如：openclaw config set channels.wecom.mediaMaxMb 50`);
         recordOperationalIssue({
           category: "media-decrypt-failed",
           messageId: msg.msgid ? String(msg.msgid) : undefined,
@@ -304,7 +304,7 @@ export async function processBotInboundMessage(params: {
         });
         return { body: "[file]", media: { buffer: decrypted.buffer, contentType: inferred.contentType, filename: inferred.filename } };
       } catch (err) {
-        target.runtime.error?.(`Failed to decrypt inbound file: ${String(err)}; 可调大 channels.wecom.media.maxBytes（当前=${maxBytes}）例如：openclaw config set channels.wecom.media.maxBytes ${50 * 1024 * 1024}`);
+        target.runtime.error?.(`Failed to decrypt inbound file: ${String(err)}; 可调大 channels.wecom.mediaMaxMb（当前=${Math.round(maxBytes / (1024 * 1024))}MB）例如：openclaw config set channels.wecom.mediaMaxMb 50`);
         recordOperationalIssue({
           category: "media-decrypt-failed",
           messageId: msg.msgid ? String(msg.msgid) : undefined,
@@ -347,7 +347,7 @@ export async function processBotInboundMessage(params: {
               bodyParts.push(`[${t}]`);
               continue;
             } catch (err) {
-              target.runtime.error?.(`Failed to decrypt mixed ${t}: ${String(err)}; 可调大 channels.wecom.media.maxBytes（当前=${maxBytes}）例如：openclaw config set channels.wecom.media.maxBytes ${50 * 1024 * 1024}`);
+              target.runtime.error?.(`Failed to decrypt mixed ${t}: ${String(err)}; 可调大 channels.wecom.mediaMaxMb（当前=${Math.round(maxBytes / (1024 * 1024))}MB）例如：openclaw config set channels.wecom.mediaMaxMb 50`);
               recordOperationalIssue({
                 category: "media-decrypt-failed",
                 messageId: msg.msgid ? String(msg.msgid) : undefined,

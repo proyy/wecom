@@ -80,12 +80,13 @@ export class BotWsSdkAdapter {
           lastError: undefined,
         });
       },
-      sendMedia: async ({ chatId, mediaUrl, text, mediaLocalRoots }) => {
+      sendMedia: async ({ chatId, mediaUrl, text, mediaLocalRoots, maxBytes }) => {
         const result = await uploadAndSendBotWsMedia({
           wsClient: client,
           chatId,
           mediaUrl,
           mediaLocalRoots,
+          maxBytes,
         });
         if (result.ok && text?.trim()) {
           await client.sendMessage(chatId, {

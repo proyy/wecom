@@ -161,7 +161,12 @@
 ## 📋 最近更新 (Changelog摘要)
 
 > 项目保持高频迭代，全面对齐甚至超越企业真实业务诉求。
-> **为保持精简，以下仅展示近期 3 次重大架构演进，完整历史版本（含全部 `v2.2.x`）请前往 [changelog/ 目录](./changelog/) 查阅。**
+> **为保持精简，以下仅展示近期 4 次重大架构演进，完整历史版本（含全部 `v2.2.x`）请前往 [changelog/ 目录](./changelog/) 查阅。**
+
+#### 📌 v2.3.19（2026-03-19）
+- **[重要修复] Bot WS 现在也真正走 `dynamicAgents`** 🧭 之前同样开启动态路由时，不同消息链路的行为并不完全一致：Webhook / Agent 能按用户、群聊隔离，Bot WebSocket 却可能重新落回主 Agent。现在 WS 运行时也执行同样的动态路由逻辑，会话隔离终于统一了。
+- **[配置统一] 媒体大小开始优先跟随 OpenClaw 标准 `mediaMaxMb`** 📦 之前 WeCom 插件更偏向读取自己的 `media.maxBytes`，用户改了 OpenClaw 主配置却可能感觉“改了没生效”。现在插件优先支持 `channels.wecom.mediaMaxMb`，并支持 `channels.wecom.accounts.<accountId>.mediaMaxMb` 做账号级覆盖；旧配置仍兼容，但只作为兜底。
+- **[体验修复] 常见本地目录文件现在更符合直觉地可发送** 🖼 过去本地媒体白名单更偏向 OpenClaw 自己目录，导致像 `Downloads`、`Desktop`、`Pictures` 里的图片明明存在，却常被拦下。现在插件默认额外放行这些常见用户目录，同时保留 `channels.wecom.media.localRoots` 继续追加共享盘、挂载盘和业务目录。
 
 #### 📌 v2.3.18（2026-03-18）
 - **[重大升级] 双平面能力融合（Bot WS ＋ MCP 强化）** 🚀 独家引入挂载式的 MCP 能力层。在保留原生 Agent 强力工具的同时，将官方新开放的企业微信能力暴露给大模型。现在，大模型可凭用户身份读写待办、日程、查通讯录。
@@ -250,8 +255,13 @@ openclaw plugins enable wecom
           }
         }
       },
+      "mediaMaxMb": 50,                           // 优先使用 OpenClaw 标准媒体上限配置
       "media": {
-        "tempDir": "/tmp/openclaw-wecom-media"
+        "tempDir": "/tmp/openclaw-wecom-media",
+        "localRoots": [
+          "/srv/company-share",
+          "/data/reports"
+        ]
       },
       "network": {                                // 内网或受限网络环境可通过代理出网
         "egressProxyUrl": "http://127.0.0.1:3128"
@@ -266,6 +276,15 @@ openclaw plugins enable wecom
   }
 }
 ```
+
+其中：
+
+- 插件现在默认额外放行常见用户目录：`~/Desktop`、`~/Documents`、`~/Downloads`、`~/Movies`、`~/Pictures`。
+- `channels.wecom.mediaMaxMb` 是首选的媒体大小上限配置，`channels.wecom.accounts.<id>.mediaMaxMb` 可以做账号级覆盖。
+- `channels.wecom.media.localRoots` 用于继续追加你自己的全局目录，例如共享盘、挂载盘或业务导出目录。
+- 旧的 `channels.wecom.media.maxBytes` 仍然兼容，但仅作为向后兼容兜底；新配置建议统一改成 `mediaMaxMb`。
+- 这些目录会和 OpenClaw 默认允许的媒体目录一起生效，不会覆盖默认白名单。
+- 也就是说，像 `~/Downloads/01.png` 这类本机文件现在默认就可以直接发到企微，不需要再单独配置。
 
 > **注意：** 历史配置里的 `agent.corpSecret` 引擎依然能够向后兼容拾起，但后续的新项目推荐采用标准的 `agentSecret` 作为对齐键。
 
@@ -294,6 +313,66 @@ openclaw plugins enable wecom
 
 需要注意的是，`dynamicAgents` 解决的是“路由隔离”和“会话隔离”，不是权限系统本身。  
 也就是说，它能显著减少上下文串线，但账号是否允许私聊、谁能触发命令、某个账号绑定到哪个主 Agent，仍然要结合 `dm.policy`、`bindings` 和企业微信授权配置一起看。
+
+### 1.5 `localRoots` 详细说明：为什么“文件明明存在”，系统却仍然不发
+
+`localRoots` 只决定一件事：**这个本地路径允不允许被当作可发送媒体读取。**
+
+| 现象 | 实际含义 |
+|---|---|
+| 文件存在，但发送失败 | 不代表系统允许读取它 |
+| 日志出现 `Local media path is not under an allowed directory` | 路径不在白名单里 |
+| 远程 `https://...` 媒体可以发 | 远程 URL 不走 `localRoots` |
+
+默认已经额外放行这些目录：
+
+| 默认允许目录 | 用途 |
+|---|---|
+| `~/Desktop` | 桌面文件、临时截图 |
+| `~/Documents` | 文档导出目录 |
+| `~/Downloads` | 下载图片、下载文件 |
+| `~/Movies` | 视频文件 |
+| `~/Pictures` | 图片、相册导出 |
+
+另外也保留 OpenClaw 自己的 `tmp / state / workspace` 相关目录。
+
+如果文件不在默认目录里，再补 `localRoots`：
+
+```json
+{
+  "channels": {
+    "wecom": {
+      "media": {
+        "localRoots": [
+          "/srv/company-share",
+          "/data/reports",
+          "/mnt/nas/public"
+        ]
+      }
+    }
+  }
+}
+```
+
+配置规则：
+
+| 规则 | 说明 |
+|---|---|
+| `localRoots` 是追加 | 不会覆盖默认目录 |
+| 建议写绝对路径 | 团队环境更稳定、更清楚 |
+| 只加业务需要的目录 | 不要为了省事把范围放太大 |
+| 不建议放整个大盘或整个用户目录 | 会把本地文件读取边界放得过宽 |
+
+排障判断：
+
+| 问题类型 | 看什么 |
+|---|---|
+| 本地路径是否允许读取 | `localRoots` |
+| 媒体能处理多大 | `channels.wecom.mediaMaxMb` |
+| 企业微信最终能不能收 | 企业微信自身媒体限制 |
+| 远程媒体能不能发 | URL 可访问性，不看 `localRoots` |
+
+一句话：`localRoots` 管“能不能读这个本地路径”，`mediaMaxMb` 管“最多读多大”。 
 
 ---
 

@@ -8,6 +8,7 @@ export interface MediaConfig {
   retentionHours?: number;
   cleanupOnStart?: boolean;
   maxBytes?: number;
+  localRoots?: string[];
 }
 
 export interface NetworkConfig {
@@ -61,12 +62,14 @@ export interface DynamicAgentsConfig {
 export interface AccountConfig {
   enabled?: boolean;
   name?: string;
+  mediaMaxMb?: number;
   bot?: BotConfig;
   agent?: AgentConfig;
 }
 
 export interface WecomConfigInput {
   enabled?: boolean;
+  mediaMaxMb?: number;
   bot?: BotConfig;
   agent?: AgentConfig;
   accounts?: Record<string, AccountConfig>;

@@ -1,14 +1,24 @@
+import os from "node:os";
+import path from "node:path";
 import type { WSClient } from "@wecom/aibot-node-sdk";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk";
+import { uploadAndSendBotWsMedia } from "./media.js";
 import { createBotWsReplyHandle } from "./reply.js";
+
+vi.mock("./media.js", () => ({
+  uploadAndSendBotWsMedia: vi.fn(),
+}));
 
 type ReplyHandleParams = Parameters<typeof createBotWsReplyHandle>[0];
 
 describe("createBotWsReplyHandle", () => {
   let mockClient: import("vitest").Mocked<WSClient>;
+  const uploadAndSendBotWsMediaMock = vi.mocked(uploadAndSendBotWsMedia);
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
+    vi.stubEnv("OPENCLAW_STATE_DIR", "/tmp/wecom-reply-state");
     mockClient = {
       replyStream: vi.fn(),
       sendMessage: vi.fn(),
@@ -17,12 +27,25 @@ describe("createBotWsReplyHandle", () => {
     mockClient.replyStream.mockResolvedValue({} as any);
     mockClient.sendMessage.mockResolvedValue({} as any);
     mockClient.replyWelcome.mockResolvedValue({} as any);
+    uploadAndSendBotWsMediaMock.mockReset();
+    uploadAndSendBotWsMediaMock.mockResolvedValue({ ok: true, messageId: "media-1" } as any);
+    const runtime = await import("../../runtime.js");
+    runtime.setWecomRuntime({
+      config: {
+        loadConfig: () => ({
+          channels: {
+            wecom: {},
+          },
+        }),
+      },
+    } as any);
   });
 
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("uses configured placeholder content for immediate ws ack", async () => {
@@ -173,6 +196,113 @@ describe("createBotWsReplyHandle", () => {
       expect.any(String),
       "正文先发",
       false,
+    );
+  });
+
+  it("includes default global media local roots for final media sends", async () => {
+    const runtime = await import("../../runtime.js");
+    runtime.setWecomRuntime({
+      config: {
+        loadConfig: () => ({}),
+      },
+    } as any);
+
+    const handle = createBotWsReplyHandle({
+      client: mockClient,
+      frame: {
+        headers: { req_id: "req-final-media-roots" },
+        body: {
+          from: { userid: "hidao" },
+          chattype: "single",
+        },
+      } as unknown as ReplyHandleParams["frame"],
+      accountId: "default",
+      inboundKind: "text",
+      autoSendPlaceholder: false,
+    });
+
+    await handle.deliver(
+      {
+        mediaUrls: ["/Users/YanHaidao/Downloads/01.png"],
+        isReasoning: false,
+      },
+      { kind: "final" },
+    );
+
+    expect(uploadAndSendBotWsMediaMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: "hidao",
+        maxBytes: 80 * 1024 * 1024,
+        mediaUrl: "/Users/YanHaidao/Downloads/01.png",
+        mediaLocalRoots: expect.arrayContaining([
+          path.resolve(resolvePreferredOpenClawTmpDir()),
+          "/tmp/wecom-reply-state",
+          "/tmp/wecom-reply-state/media",
+          path.resolve(os.homedir(), "Desktop"),
+          path.resolve(os.homedir(), "Documents"),
+          path.resolve(os.homedir(), "Downloads"),
+        ]),
+      }),
+    );
+    expect(mockClient.replyStream).toHaveBeenCalledWith(
+      expect.objectContaining({ headers: { req_id: "req-final-media-roots" } }),
+      expect.any(String),
+      "文件已发送。",
+      true,
+    );
+  });
+
+  it("passes configured mediaMaxMb to final media sends", async () => {
+    const runtime = await import("../../runtime.js");
+    runtime.setWecomRuntime({
+      config: {
+        loadConfig: () => ({
+          agents: {
+            defaults: {
+              mediaMaxMb: 12,
+            },
+          },
+          channels: {
+            wecom: {
+              mediaMaxMb: 24,
+              accounts: {
+                default: {
+                  mediaMaxMb: 40,
+                },
+              },
+            },
+          },
+        }),
+      },
+    } as any);
+
+    const handle = createBotWsReplyHandle({
+      client: mockClient,
+      frame: {
+        headers: { req_id: "req-final-media-max-bytes" },
+        body: {
+          from: { userid: "hidao" },
+          chattype: "single",
+        },
+      } as unknown as ReplyHandleParams["frame"],
+      accountId: "default",
+      inboundKind: "text",
+      autoSendPlaceholder: false,
+    });
+
+    await handle.deliver(
+      {
+        mediaUrls: ["/Users/YanHaidao/Downloads/01.png"],
+        isReasoning: false,
+      },
+      { kind: "final" },
+    );
+
+    expect(uploadAndSendBotWsMediaMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: "hidao",
+        maxBytes: 40 * 1024 * 1024,
+      }),
     );
   });
 

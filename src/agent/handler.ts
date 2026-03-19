@@ -481,7 +481,7 @@ async function processAgentMessage(params: {
   const resolvedContent = resolveEventText();
   let finalContent = resolvedContent;
 
-  const mediaMaxBytes = resolveWecomMediaMaxBytes(config);
+  const mediaMaxBytes = resolveWecomMediaMaxBytes(config, agent.accountId);
 
   // 处理媒体文件
   const attachments: NonNullable<UnifiedInboundEvent["attachments"]> = [];
@@ -598,8 +598,8 @@ async function processAgentMessage(params: {
           content,
           "",
           `媒体处理失败：${String(err)}`,
-          `提示：可在 OpenClaw 配置中提高 channels.wecom.media.maxBytes（当前=${mediaMaxBytes}）`,
-          `例如：openclaw config set channels.wecom.media.maxBytes ${50 * 1024 * 1024}`,
+          `提示：可在 OpenClaw 配置中提高 channels.wecom.mediaMaxMb（当前=${Math.round(mediaMaxBytes / (1024 * 1024))}MB）`,
+          "例如：openclaw config set channels.wecom.mediaMaxMb 50",
         ].join("\n");
       }
     } else {

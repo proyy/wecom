@@ -154,7 +154,7 @@ export function createBotStreamOrchestrator(params: {
     let mediaType: string | undefined;
     if (media) {
       try {
-        const maxBytes = resolveWecomMediaMaxBytes(target.config);
+        const maxBytes = resolveWecomMediaMaxBytes(target.config, target.account.accountId);
         const saved = await core.channel.media.saveMediaBuffer(media.buffer, media.contentType, "inbound", maxBytes, media.filename);
         mediaPath = saved.path;
         mediaType = saved.contentType;

@@ -11,6 +11,7 @@ export type WecomMediaConfig = {
   retentionHours?: number;
   cleanupOnStart?: boolean;
   maxBytes?: number;
+  localRoots?: string[];
 };
 
 export type WecomNetworkConfig = {
@@ -72,12 +73,14 @@ export type WecomDynamicAgentsConfig = {
 export type WecomAccountConfig = {
   enabled?: boolean;
   name?: string;
+  mediaMaxMb?: number;
   bot?: WecomBotConfig;
   agent?: WecomAgentConfig;
 };
 
 export type WecomConfig = {
   enabled?: boolean;
+  mediaMaxMb?: number;
   bot?: WecomBotConfig;
   agent?: WecomAgentConfig;
   accounts?: Record<string, WecomAccountConfig>;

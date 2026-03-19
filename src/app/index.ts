@@ -19,6 +19,7 @@ export type BotWsPushHandle = {
     mediaUrl: string;
     text?: string;
     mediaLocalRoots?: readonly string[];
+    maxBytes?: number;
   }) => Promise<{
     ok: boolean;
     messageId?: string;

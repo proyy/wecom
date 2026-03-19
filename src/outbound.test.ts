@@ -339,14 +339,114 @@ describe("wecomOutbound", () => {
 
     expect(sendMedia).toHaveBeenCalledWith({
       chatId: "zhangsan",
+      maxBytes: 80 * 1024 * 1024,
       mediaUrl: "https://example.com/media.png",
-      mediaLocalRoots: undefined,
+      mediaLocalRoots: expect.any(Array),
       text: "caption",
     });
     expect(api.sendMedia).not.toHaveBeenCalled();
   });
 
-  it("falls back to Agent media when Bot WS media delivery returns a non-fatal failure", async () => {
+  it("merges configured media local roots into Bot WS sends", async () => {
+    const { wecomOutbound } = await import("./outbound.js");
+    const runtime = await import("./runtime.js");
+    const sendMedia = vi.fn().mockResolvedValue({ ok: true, messageId: "ws-media-merged" });
+    runtime.registerBotWsPushHandle(
+      "default",
+      createBotWsHandle({
+        sendMedia,
+      }),
+    );
+
+    const cfg = {
+      channels: {
+        wecom: {
+          enabled: true,
+          bot: {
+            primaryTransport: "ws",
+            ws: {
+              botId: "bot-1",
+              secret: "secret-1",
+            },
+          },
+          media: {
+            localRoots: ["/tmp/downloads"],
+          },
+        },
+      },
+    };
+
+    await wecomOutbound.sendMedia({
+      cfg,
+      to: "user:zhangsan",
+      mediaUrl: "/tmp/workspace-agent/01.png",
+      mediaLocalRoots: ["/tmp/workspace-agent"],
+    } as any);
+
+    expect(sendMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: "zhangsan",
+        mediaUrl: "/tmp/workspace-agent/01.png",
+        mediaLocalRoots: expect.arrayContaining(["/tmp/workspace-agent", "/tmp/downloads"]),
+        text: undefined,
+      }),
+    );
+  });
+
+  it("passes account-aware mediaMaxMb to Bot WS media sends", async () => {
+    const { wecomOutbound } = await import("./outbound.js");
+    const runtime = await import("./runtime.js");
+    const sendMedia = vi.fn().mockResolvedValue({ ok: true, messageId: "ws-media-limit" });
+    runtime.registerBotWsPushHandle(
+      "acct-ws",
+      createBotWsHandle({
+        sendMedia,
+      }),
+    );
+
+    const cfg = {
+      agents: {
+        defaults: {
+          mediaMaxMb: 12,
+        },
+      },
+      channels: {
+        wecom: {
+          enabled: true,
+          mediaMaxMb: 24,
+          accounts: {
+            "acct-ws": {
+              enabled: true,
+              mediaMaxMb: 36,
+              bot: {
+                primaryTransport: "ws",
+                ws: {
+                  botId: "bot-1",
+                  secret: "secret-1",
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    await wecomOutbound.sendMedia({
+      cfg,
+      accountId: "acct-ws",
+      to: "user:zhangsan",
+      mediaUrl: "https://example.com/media.png",
+    } as any);
+
+    expect(sendMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: "zhangsan",
+        maxBytes: 36 * 1024 * 1024,
+      }),
+    );
+  });
+
+  it("does not fall back to Agent media when Bot WS conversation media delivery fails", async () => {
     const { wecomOutbound } = await import("./outbound.js");
     const runtime = await import("./runtime.js");
     const api = await import("./transport/agent-api/core.js");
@@ -391,14 +491,72 @@ describe("wecomOutbound", () => {
       },
     };
 
+    await expect(
+      wecomOutbound.sendMedia({
+        cfg,
+        to: "user:zhangsan",
+        text: "caption",
+        mediaUrl: "https://example.com/media.png",
+      } as any),
+    ).rejects.toThrow(/Bot WS media delivery failed/i);
+
+    expect(sendMedia).toHaveBeenCalledTimes(1);
+    expect(api.sendMedia).not.toHaveBeenCalled();
+  });
+
+  it("keeps explicit agent targets on the Agent media path", async () => {
+    const { wecomOutbound } = await import("./outbound.js");
+    const runtime = await import("./runtime.js");
+    const api = await import("./transport/agent-api/core.js");
+    const sendMedia = vi.fn().mockResolvedValue({ ok: true, messageId: "ws-media-1" });
+    runtime.registerBotWsPushHandle(
+      "default",
+      createBotWsHandle({
+        sendMedia,
+      }),
+    );
+    (api.uploadMedia as any).mockResolvedValue("media-1");
+    (api.sendMedia as any).mockResolvedValue(undefined);
+    (api.sendMedia as any).mockClear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+        headers: new Headers({ "content-type": "image/png" }),
+      }),
+    );
+
+    const cfg = {
+      channels: {
+        wecom: {
+          enabled: true,
+          bot: {
+            primaryTransport: "ws",
+            ws: {
+              botId: "bot-1",
+              secret: "secret-1",
+            },
+          },
+          agent: {
+            corpId: "corp",
+            corpSecret: "secret",
+            agentId: 1000002,
+            token: "token",
+            encodingAESKey: "aes",
+          },
+        },
+      },
+    };
+
     await wecomOutbound.sendMedia({
       cfg,
-      to: "user:zhangsan",
+      to: "wecom-agent:default:user:zhangsan",
       text: "caption",
       mediaUrl: "https://example.com/media.png",
     } as any);
 
-    expect(sendMedia).toHaveBeenCalledTimes(1);
+    expect(sendMedia).not.toHaveBeenCalled();
     expect(api.sendMedia).toHaveBeenCalledTimes(1);
   });
 

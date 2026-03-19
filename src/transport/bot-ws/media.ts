@@ -158,9 +158,10 @@ function applyFileSizeLimits(
 async function resolveMediaFile(
   mediaUrl: string,
   mediaLocalRoots?: readonly string[],
+  maxBytes?: number,
 ): Promise<ResolvedMediaFile> {
   const result = await loadOutboundMediaFromUrl(mediaUrl, {
-    maxBytes: FILE_MAX_BYTES,
+    maxBytes: maxBytes ?? FILE_MAX_BYTES,
     mediaLocalRoots,
   });
   let contentType = result.contentType || "application/octet-stream";
@@ -185,9 +186,10 @@ export async function uploadAndSendBotWsMedia(params: {
   mediaUrl: string;
   chatId: string;
   mediaLocalRoots?: readonly string[];
+  maxBytes?: number;
 }): Promise<BotWsMediaSendResult> {
   try {
-    const media = await resolveMediaFile(params.mediaUrl, params.mediaLocalRoots);
+    const media = await resolveMediaFile(params.mediaUrl, params.mediaLocalRoots, params.maxBytes);
     const detectedType = detectWeComMediaType(media.contentType);
     const sizeCheck = applyFileSizeLimits(media.buffer.length, detectedType, media.contentType);
     if (sizeCheck.shouldReject) {
@@ -229,9 +231,10 @@ export async function uploadAndReplyBotWsMedia(params: {
   frame: WsFrameHeaders;
   mediaUrl: string;
   mediaLocalRoots?: readonly string[];
+  maxBytes?: number;
 }): Promise<BotWsMediaSendResult> {
   try {
-    const media = await resolveMediaFile(params.mediaUrl, params.mediaLocalRoots);
+    const media = await resolveMediaFile(params.mediaUrl, params.mediaLocalRoots, params.maxBytes);
     const detectedType = detectWeComMediaType(media.contentType);
     const sizeCheck = applyFileSizeLimits(media.buffer.length, detectedType, media.contentType);
     if (sizeCheck.shouldReject) {

@@ -1,6 +1,8 @@
 import type { ChannelOutboundAdapter, ChannelOutboundContext } from "openclaw/plugin-sdk";
 import { WecomAgentDeliveryService } from "./capability/agent/index.js";
 import {
+  resolveWecomMergedMediaLocalRoots,
+  resolveWecomMediaMaxBytes,
   resolveWecomAccount,
   resolveWecomAccountConflict,
   resolveWecomAccounts,
@@ -178,11 +180,16 @@ async function sendMediaViaBotWs(params: {
   console.log(
     `[wecom-outbound] Sending Bot WS media to target=${String(params.to ?? "")} chatId=${chatId} media=${params.mediaUrl}`,
   );
+  const effectiveMediaLocalRoots = resolveWecomMergedMediaLocalRoots({
+    cfg: params.cfg,
+    baseRoots: params.mediaLocalRoots,
+  });
   const result = await handle.sendMedia({
     chatId,
     mediaUrl: params.mediaUrl,
     text: params.text,
-    mediaLocalRoots: params.mediaLocalRoots,
+    mediaLocalRoots: effectiveMediaLocalRoots,
+    maxBytes: resolveWecomMediaMaxBytes(params.cfg, accountId),
   });
   if (result.ok) {
     console.log(`[wecom-outbound] Successfully sent Bot WS media to ${chatId}`);
@@ -301,6 +308,11 @@ export const wecomOutbound: ChannelOutboundAdapter = {
         messageId: `bot-ws-media-${Date.now()}`,
         timestamp: Date.now(),
       };
+    }
+    if (botWs.attempted) {
+      throw new Error(
+        `WeCom Bot WS media delivery failed for ${String(to ?? "")}: ${botWs.reason ?? "unknown"}`,
+      );
     }
 
     const agent = resolveAgentConfigOrThrow({ cfg, accountId });

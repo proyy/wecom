@@ -6,6 +6,8 @@ import {
   type WSClient,
 } from "@wecom/aibot-node-sdk";
 import { formatErrorMessage } from "openclaw/plugin-sdk";
+import { resolveWecomMediaMaxBytes, resolveWecomMergedMediaLocalRoots } from "../../config/index.js";
+import { getWecomRuntime } from "../../runtime.js";
 import type { ReplyHandle, ReplyPayload } from "../../types/index.js";
 import { uploadAndSendBotWsMedia } from "./media.js";
 
@@ -246,6 +248,9 @@ export function createBotWsReplyHandle(params: {
 
       let finalText = outboundText;
       if (info.kind === "final" && mediaUrls.length > 0) {
+        const cfg = getWecomRuntime().config.loadConfig();
+        const mediaLocalRoots = resolveWecomMergedMediaLocalRoots({ cfg });
+        const mediaMaxBytes = resolveWecomMediaMaxBytes(cfg, params.accountId);
         const mediaFailures: string[] = [];
         const mediaNotes: string[] = [];
         let mediaSent = 0;
@@ -254,6 +259,8 @@ export function createBotWsReplyHandle(params: {
             wsClient: params.client,
             chatId: peerId,
             mediaUrl,
+            mediaLocalRoots,
+            maxBytes: mediaMaxBytes,
           });
           if (result.ok) {
             mediaSent += 1;
